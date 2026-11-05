@@ -7,6 +7,7 @@ Writes <out_dir>/*.pdf and <out_dir>/answer_key.json. Every name, VAT id and amo
 import hashlib
 import json
 import sys
+import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -446,6 +447,7 @@ def draw(inv: Invoice, path: Path) -> None:
     )
     pdf.drawString(56, 60, footer)
     if inv.note:
+        pdf.setFont(s.font, 7)
         pdf.drawString(56, 74, inv.note)
     pdf.showPage()
     pdf.save()
@@ -467,7 +469,8 @@ def rasterize(path: Path) -> None:
             pick(f"noise:{n}:v", 120, 200),
         )
     image = image.filter(ImageFilter.GaussianBlur(0.6))
-    image.save(path, "PDF", resolution=150)
+    fixed = time.strptime("2026-10-01", "%Y-%m-%d")
+    image.save(path, "PDF", resolution=150, creationDate=fixed, modDate=fixed)
 
 
 def key_entry(inv: Invoice) -> dict[str, Any]:
