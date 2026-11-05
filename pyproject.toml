@@ -40,6 +40,11 @@ extend-exclude = [".semgrep/fixtures"]
 [tool.ruff.lint]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# owner-approved 2026-11-05: the spec requires catching every exception here (DEC-05, DEC-08); handlers print type names only
+"src/invoice_pdf_to_sheet/extract.py" = ["BLE001"]
+"src/invoice_pdf_to_sheet/cli.py" = ["BLE001"]
+
 [tool.mypy]
 strict = true
 ignore_missing_imports = true
