@@ -35,7 +35,7 @@ CORS_PATH = "/ADAPT"  # ADAPT: a route browsers call cross-origin
 ALLOWED_ORIGIN = "https://ADAPT.example"  # ADAPT: the one origin allowed to call it
 BODY_CAP_PATH = "/ADAPT"  # ADAPT: a POST route that takes a JSON body
 REQUEST_ID_HEADER = "x-request-id"
-USER_INPUT_TAG = "user_input"  # ADAPT: tag the app fences visitor text in, e.g. <user_input> or <visitor_input name="...">
+USER_INPUT_TAG = r"invoice-[0-9a-f]{16}"  # regex: a fresh random tag per message
 # ADAPT: files that define deploy images, e.g. [REPO / "api" / "app.py"]
 IMAGE_FILES: list[Path] = []
 
