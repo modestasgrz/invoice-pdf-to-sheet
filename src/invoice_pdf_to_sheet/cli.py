@@ -37,20 +37,10 @@ def run(input_dir: Path, xlsx: Path, google: bool, workers: int) -> int:
     print(f"xlsx: {xlsx}")
     if not google:
         return 0
-    from google.auth.exceptions import GoogleAuthError
-    from googleapiclient.errors import HttpError
-
     google_sheet = importlib.import_module("invoice_pdf_to_sheet.google_sheet")
     try:
         url = google_sheet.publish(ready, review)
-    except (
-        google_sheet.GoogleSetupError,
-        GoogleAuthError,
-        HttpError,
-        OSError,
-        ValueError,
-        KeyError,
-    ) as error:
+    except Exception as error:
         print(f"Google Sheet upload failed: {type(error).__name__}", file=sys.stderr)
         return 1
     print(f"Google Sheet: {url}")

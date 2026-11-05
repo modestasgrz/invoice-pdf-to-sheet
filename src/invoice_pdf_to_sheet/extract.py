@@ -6,9 +6,7 @@ from typing import Any, cast
 
 import anthropic
 import pdfplumber
-import pydantic
 from loguru import logger
-from pdfplumber.utils.exceptions import PdfminerException
 
 from invoice_pdf_to_sheet.checks import check_evidence, check_fields
 from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
@@ -73,7 +71,7 @@ def extract_file(path: Path) -> ResultRow:
                     buffer = io.BytesIO()
                     page.to_image(resolution=150).original.save(buffer, "PNG")
                     images.append(base64.b64encode(buffer.getvalue()).decode())
-    except (PdfminerException, OSError, ValueError) as error:
+    except Exception as error:
         logger.warning("{}: unreadable ({})", path.name, type(error).__name__)
         row.reasons.append("not a readable PDF")
         return row
@@ -99,7 +97,7 @@ def extract_file(path: Path) -> ResultRow:
         try:
             fields = call_model(SYSTEM, content)
             break
-        except (anthropic.APIError, pydantic.ValidationError, ExtractionError) as error:
+        except Exception as error:
             logger.warning(
                 "{}: attempt {} failed ({})", path.name, attempt, type(error).__name__
             )
