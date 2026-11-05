@@ -28,13 +28,7 @@ NOT_APPLICABLE: dict[str, str] = {
     "image_lock": "no deploy image; runs locally from the uv lockfile",
 }
 # A real hole the owner accepts for now (shows as xfail with the reason, listed in the PR). Fix it, then remove the entry.
-PRE_BUILD = "pipeline not built yet (PART-B); the shim below is wired to DEC-02/DEC-04, remove these entries in the [no-spec] PR right after PART-B merges"
-KNOWN_OPEN: dict[str, str] = {
-    "pii_logs": PRE_BUILD,
-    "prompt_injection": PRE_BUILD,
-    "model_output": PRE_BUILD,
-    "provider_error": PRE_BUILD,
-}
+KNOWN_OPEN: dict[str, str] = {}
 
 RATE_LIMIT = 5  # ADAPT: requests one session may make to the rate-limited endpoint before it gets 429
 CORS_PATH = "/ADAPT"  # ADAPT: a route browsers call cross-origin
@@ -100,12 +94,7 @@ def app() -> Any:
 
 
 def install_fakes(monkeypatch: pytest.MonkeyPatch, llm: "FakeLLM") -> None:
-    """Every model call goes through the DEC-04 seam extract.call_model(system, content) -> InvoiceFields.
-    Before PART-B exists there is nothing to patch (the LLM checks are KNOWN_OPEN until then)."""
-    import importlib.util
-
-    if importlib.util.find_spec("invoice_pdf_to_sheet.extract") is None:
-        return
+    """Every model call goes through the DEC-04 seam extract.call_model(system, content) -> InvoiceFields."""
     from invoice_pdf_to_sheet.schema import InvoiceFields
 
     def fake_call_model(system: str, content: list[dict[str, Any]]) -> Any:
@@ -144,7 +133,15 @@ def invalid_reply(canary: str) -> Any:
 
 def provider_error(canary: str) -> Exception:
     """ADAPT: the error the provider SDK raises on a 5xx, with canary in its message/body."""
-    return RuntimeError(f"provider 500: {canary}")
+    import anthropic
+    import httpx2
+
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.InternalServerError(
+        f"provider 500: {canary}",
+        response=httpx2.Response(500, request=request, text=canary),
+        body={"error": canary},
+    )
 
 
 def send_visitor_text(http: TestClient, text: str, email: str) -> Any:
