@@ -127,9 +127,11 @@ def test_multipage_text_numbers_pages_in_content_and_evidence(
     (content,) = model.calls
     assert len(content) == 1
     text = content[0]["text"]
-    assert text.startswith("<user_input>\n--- page 1 ---\n")
-    assert text.endswith("\n</user_input>")
-    assert text.count("<user_input>") == 1
+    tag = re.fullmatch(
+        r"<(invoice-[0-9a-f]{16})>\n--- page 1 ---\n.*\n</\1>", text, re.DOTALL
+    )
+    assert tag
+    assert text.count(f"<{tag.group(1)}>") == 1
     assert [m.group(1) for m in re.finditer(r"--- page (\d+) ---", text)] == [
         "1",
         "2",
