@@ -1,0 +1,45 @@
+[project]
+name = "invoice-pdf-to-sheet"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "modestasgrz", email = "71698213+modestasgrz@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=2.5.0",
+    "loguru>=0.7.3",
+    "openpyxl>=3.1.5",
+    "pdfplumber>=0.11.10",
+    "pydantic>=2.14.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "reportlab>=5.1.0",
+    "ruff>=0.17.3",
+    "starlette>=1.10.0",
+]
+
+[tool.ruff]
+extend-exclude = [".semgrep/fixtures"]
+
+[tool.ruff.lint]
+ignore = ["E501"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+mypy_path = "tests/security"
+exclude = ["^\\.semgrep/", "^\\.claude/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
