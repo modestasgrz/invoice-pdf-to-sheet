@@ -56,11 +56,11 @@ def escape(text: str) -> str:
 
 def extract_file(path: Path) -> ResultRow:
     row = ResultRow(file=path.name, pdf_path=path)
-    size = path.stat().st_size
-    if size > MAX_BYTES:
-        row.reasons.append(f"file too large: {size / 1048576:.1f} MB > 10 MB")
-        return row
     try:
+        size = path.stat().st_size
+        if size > MAX_BYTES:
+            row.reasons.append(f"file too large: {size / 1048576:.1f} MB > 10 MB")
+            return row
         with pdfplumber.open(path) as pdf:
             if len(pdf.pages) > MAX_PAGES:
                 row.reasons.append(f"too many pages: {len(pdf.pages)} > {MAX_PAGES}")

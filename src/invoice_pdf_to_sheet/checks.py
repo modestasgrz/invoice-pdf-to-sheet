@@ -7,6 +7,7 @@ from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
 VAT_FORMATS = re.compile(
     r"LT(\d{9}|\d{12})|LV\d{11}|EE\d{9}|DE\d{9}|NL\d{9}B\d{2}|IE\d{7}[A-W][A-I]?|PL\d{10}|FI\d{8}"
 )
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 EVIDENCE_REQUIRED = ("invoice_number", "invoice_date", "gross_total")
 TOLERANCE = 0.01 + 1e-9
 
@@ -23,10 +24,10 @@ def check_fields(fields: InvoiceFields) -> list[str]:
     """Arithmetic, VAT id and date checks on the model's output. Evidence and duplicates are checked elsewhere."""
     reasons: list[str] = []
     lines_sum = sum(line.line_total for line in fields.lines)
-    if abs(lines_sum - fields.net_total) > TOLERANCE:
+    if not abs(lines_sum - fields.net_total) <= TOLERANCE:
         reasons.append(f"lines sum {lines_sum:.2f} != net {fields.net_total:.2f}")
     net_vat = fields.net_total + fields.vat_total
-    if abs(net_vat - fields.gross_total) > TOLERANCE:
+    if not abs(net_vat - fields.gross_total) <= TOLERANCE:
         reasons.append(f"net + VAT {net_vat:.2f} != gross {fields.gross_total:.2f}")
 
     vat_id = normalize_vat(fields.supplier_vat_id or "")
@@ -42,6 +43,8 @@ def check_fields(fields: InvoiceFields) -> list[str]:
 
     issued: date | None = None
     try:
+        if not ISO_DATE.fullmatch(fields.invoice_date):
+            raise ValueError
         issued = date.fromisoformat(fields.invoice_date)
     except ValueError:
         reasons.append(f"invalid invoice date: {fields.invoice_date}")
@@ -49,6 +52,8 @@ def check_fields(fields: InvoiceFields) -> list[str]:
         reasons.append(f"invoice date in the future: {issued.isoformat()}")
     if fields.due_date:
         try:
+            if not ISO_DATE.fullmatch(fields.due_date):
+                raise ValueError
             due = date.fromisoformat(fields.due_date)
         except ValueError:
             reasons.append(f"invalid due date: {fields.due_date}")
@@ -63,7 +68,8 @@ def check_evidence(fields: InvoiceFields, pages: list[str]) -> list[str]:
     missing = [
         quote.field
         for quote in fields.evidence
-        if not 1 <= quote.page <= len(pages)
+        if not collapse(quote.quote)
+        or not 1 <= quote.page <= len(pages)
         or collapse(quote.quote) not in collapse(pages[quote.page - 1])
     ]
     quoted = {quote.field for quote in fields.evidence}

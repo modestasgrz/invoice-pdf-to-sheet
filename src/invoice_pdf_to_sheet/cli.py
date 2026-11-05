@@ -1,5 +1,6 @@
 import argparse
 import importlib
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,23 +14,23 @@ from invoice_pdf_to_sheet.xlsx import write_xlsx
 
 
 def run(input_dir: Path, xlsx: Path, google: bool, workers: int) -> int:
-    files = sorted(input_dir.glob("*.pdf")) if input_dir.is_dir() else []
+    files = (
+        sorted(p for p in input_dir.iterdir() if p.suffix.lower() == ".pdf")
+        if input_dir.is_dir()
+        else []
+    )
     if not files:
         print(f"no PDF files in {input_dir}", file=sys.stderr)
         return 2
     logger.info("run start: {} files", len(files))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        rows = list(pool.map(lambda path: extract.extract_file(path), files))
+        rows = list(pool.map(extract.extract_file, files))
     mark_duplicates(rows)
     ready = [row for row in rows if not row.reasons]
     review = [row for row in rows if row.reasons]
     for row in rows:
-        logger.info(
-            "{}: {} ({} reasons)",
-            row.file,
-            "review" if row.reasons else "ready",
-            len(row.reasons),
-        )
+        codes = [re.split(r"[:\d]", reason)[0].strip() for reason in row.reasons]
+        logger.info("{}: {} {}", row.file, "review" if row.reasons else "ready", codes)
     write_xlsx(ready, review, xlsx)
     logger.info("run end: {} ready, {} review", len(ready), len(review))
     print(f"{len(rows)} invoices: {len(ready)} ready, {len(review)} needs review")
@@ -65,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     run_cmd.add_argument("--input", type=Path, required=True)
     run_cmd.add_argument("--xlsx", type=Path, required=True)
     run_cmd.add_argument("--google", action="store_true")
-    run_cmd.add_argument("--workers", type=int, default=4)
+    run_cmd.add_argument("--workers", type=int, default=4, choices=range(1, 5))
     eval_cmd = commands.add_parser("eval", help="score an xlsx against the answer key")
     eval_cmd.add_argument("--xlsx", type=Path, required=True)
     eval_cmd.add_argument("--key", type=Path, required=True)
