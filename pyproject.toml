@@ -9,11 +9,16 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=2.5.0",
+    "google-api-python-client>=2.201.0",
+    "google-auth-oauthlib>=1.5.0",
     "loguru>=0.7.3",
     "openpyxl>=3.1.5",
     "pdfplumber>=0.11.10",
     "pydantic>=2.14.3",
 ]
+
+[project.scripts]
+invoice-pdf-to-sheet = "invoice_pdf_to_sheet.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
@@ -39,7 +44,7 @@ ignore = ["E501"]
 strict = true
 ignore_missing_imports = true
 mypy_path = "tests/security"
-exclude = ["^\\.semgrep/", "^\\.claude/"]
+exclude = ["^\\.semgrep/", "^\\.claude/", "^tests/acceptance/.*/conftest\\.py$"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
