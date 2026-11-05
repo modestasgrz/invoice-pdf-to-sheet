@@ -74,7 +74,35 @@ def check_evidence(fields: InvoiceFields, pages: list[str]) -> list[str]:
     ]
     quoted = {quote.field for quote in fields.evidence}
     missing += [field for field in EVIDENCE_REQUIRED if field not in quoted]
-    return [f"evidence not found: {field}" for field in dict.fromkeys(missing)]
+    mismatched = [
+        quote.field
+        for quote in fields.evidence
+        if quote.field == "invoice_number"
+        and re.sub(r"\s", "", fields.invoice_number).upper()
+        not in re.sub(r"\s", "", quote.quote).upper()
+        or quote.field == "gross_total"
+        and not any(
+            abs(amount - fields.gross_total) <= 0.005 for amount in amounts(quote.quote)
+        )
+    ]
+    return [f"evidence not found: {field}" for field in dict.fromkeys(missing)] + [
+        f"evidence does not match: {field}" for field in dict.fromkeys(mismatched)
+    ]
+
+
+def amounts(text: str) -> list[float]:
+    """Numbers in printed form: '.' or ',' before exactly 2 final digits is the decimal mark, other '.', ',' and spaces group thousands."""
+    found = []
+    for token in re.findall(r"\d[\d., ]*\d|\d", text):
+        whole, _, cents = (
+            token.rpartition(token[-3])
+            if len(token) > 3 and token[-3] in ".,"
+            else (token, "", "")
+        )
+        found.append(
+            float(re.sub(r"[., ]", "", whole) + ("." + cents if cents else ""))
+        )
+    return found
 
 
 def mark_duplicates(rows: list[ResultRow]) -> None:

@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from invoice_pdf_to_sheet.checks import (
+    amounts,
     check_evidence,
     check_fields,
     mark_duplicates,
@@ -140,3 +141,32 @@ def test_failed_rows_never_count_as_duplicates() -> None:
     mark_duplicates(rows)
     assert rows[1].reasons == []
     assert rows[2].reasons == ["duplicate of b.pdf"]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Brutto: 302,50", [302.5]),
+        ("Total gross: 1,234.56", [1234.56]),
+        ("1.234,56 EUR", [1234.56]),
+        ("Gesamt 1 234,56", [1234.56]),
+        ("1,234", [1234.0]),
+    ],
+)
+def test_amounts_normalize_separators(text: str, expected: list[float]) -> None:
+    assert amounts(text) == expected
+
+
+def test_evidence_must_match_value() -> None:
+    page = (
+        "Rechnungsnummer: BF-1 Rechnungsdatum: 01.10.2026 Gesamt 119,00 Alt BF-2 120,00"
+    )
+    evidence = [
+        {"field": "invoice_number", "page": 1, "quote": "BF-2"},
+        {"field": "invoice_date", "page": 1, "quote": "01.10.2026"},
+        {"field": "gross_total", "page": 1, "quote": "120,00"},
+    ]
+    assert check_evidence(fields(evidence=evidence), [page]) == [
+        "evidence does not match: invoice_number",
+        "evidence does not match: gross_total",
+    ]
