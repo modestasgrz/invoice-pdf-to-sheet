@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 import pdfplumber
 from openpyxl import load_workbook
-from pdfplumber.utils.exceptions import PdfminerException
+from pdfplumber.utils.exceptions import MalformedPDFException, PdfminerException
 
 from invoice_pdf_to_sheet.evaluate import FIELDS, evaluate, same
 
@@ -24,12 +24,12 @@ PLAIN: list[tuple[str, str, str]] = [
     ),
     (
         r"lines sum (\S+) != net (\S+)",
-        "The invoice lines add up to €{0}, but the invoice says the net total is €{1}.",
+        "The invoice lines add up to {0}, but the invoice says the net total is {1}.",
         "Ask the supplier for a corrected invoice before paying.",
     ),
     (
         r"net \+ VAT (\S+) != gross (\S+)",
-        "Net + VAT is €{0}, but the invoice total says €{1}.",
+        "Net + VAT is {0}, but the invoice total says {1}.",
         "Ask the supplier which total is right.",
     ),
     (
@@ -115,6 +115,10 @@ SUSPICIOUS = re.compile(
     re.IGNORECASE,
 )
 
+REASON_STARTS = [
+    re.escape(re.sub(r"\\(.)", r"\1", pattern.split("(")[0])) for pattern, _, _ in PLAIN
+]
+
 CSS = """:root{--ink:#16181d;--mute:#6b7280;--line:#e5e7eb;--bg:#f7f7f5;--ok:#15803d;--rev:#b45309;--err:#b91c1c}
 *{box-sizing:border-box}body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
 main{max-width:1100px;margin:0 auto;padding:28px 24px 48px}h1{margin:0;font-size:22px}h2{font-size:16px;margin:28px 0 10px}
@@ -135,8 +139,13 @@ td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}td.nu
 .miss{color:var(--err);font-size:12px;font-weight:600}.score{margin-top:28px;color:var(--mute);font-size:13px}"""
 
 
-def money(value: Any) -> str:
-    return f"€{float(value):,.2f}" if isinstance(value, int | float) else "—"
+def money(rows: list[dict[str, Any]]) -> str:
+    totals: dict[str, float] = {}
+    for row in rows:
+        if isinstance(row["gross_total"], int | float):
+            currency = str(row["currency"] or "?")
+            totals[currency] = totals.get(currency, 0) + row["gross_total"]
+    return " + ".join(f"{v:,.2f} {c}" for c, v in totals.items()) or "—"
 
 
 def plain(reason: str) -> tuple[str, str]:
@@ -199,12 +208,12 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         try:
             with pdfplumber.open(path) as document:
                 text = " ".join(p.extract_text() or "" for p in document.pages)
-        except PdfminerException:
+        except (PdfminerException, MalformedPDFException):
             return ""
         match = SUSPICIOUS.search(" ".join(text.split()))
         return match.group(0) if match else ""
 
-    flagged = {str(r["file"]): suspicious(r) for r in ready}
+    flagged = {str(r["file"]): suspicious(r) for r in ready + review}
 
     def misses(row: dict[str, Any]) -> str:
         expected = key.get(str(row["file"]))
@@ -223,17 +232,19 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         f"<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'><title>Invoices: {len(ready)} ready, {len(review)} need you</title>",
         f"<meta name='viewport' content='width=device-width, initial-scale=1'><style>{CSS}</style></head><body><main>",
         "<h1>Supplier invoices</h1>",
-        f"<div class='sub'>{total} PDFs read from <code>{e(str(xlsx))}</code> · generated test data · {date.today().isoformat()}</div>",
+        f"<div class='sub'>{total} PDFs read from <code>{e(str(xlsx))}</code> · {date.today().isoformat()}</div>",
         "<div class='tiles'>",
-        f"<div class='tile ok'><b>{len(ready)}</b><span>ready to book · {money(sum(float(r['gross_total'] or 0) for r in ready))}</span></div>",
-        f"<div class='tile rev'><b>{len(review)}</b><span>need you · {money(sum(float(r['gross_total'] or 0) for r in review))}</span></div>",
+        f"<div class='tile ok'><b>{len(ready)}</b><span>ready to book · {e(money(ready))}</span></div>",
+        f"<div class='tile rev'><b>{len(review)}</b><span>need you · {e(money(review))}</span></div>",
         "</div>",
         f"<h2>Needs you ({len(review)})</h2>",
     ]
     if not review:
         parts.append("<p class='meta'>Nothing to check. Every invoice passed.</p>")
     for row in review:
-        reasons = str(row["reasons"] or "").split("; ")
+        reasons = re.split(
+            f"; (?={'|'.join(REASON_STARTS)})", str(row["reasons"] or "")
+        )
         items = []
         for reason in reasons:
             said, todo = plain(reason)
@@ -243,10 +254,14 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
             items.append(
                 f"<li>{e(said)} <span class='todo'>{e(todo)}</span>{opener}</li>"
             )
+        if phrase := flagged[str(row["file"])]:
+            items.append(
+                f"<li>This PDF also contains text that tries to give orders to software: \u201c{e(phrase)}\u201d. <span class='todo'>Make sure it's a real invoice from this supplier.</span></li>"
+            )
         parts.append(
             "<div class='card'><div class='top'>"
             f"<div><span class='who'>{e(str(row['supplier_name'] or 'Unknown supplier'))}</span> · {e(str(row['invoice_number'] or 'no number read'))}</div>"
-            f"<div class='amt'>{money(row['gross_total'])}</div></div>"
+            f"<div class='amt'>{e(money([row]))}</div></div>"
             f"<ul>{''.join(items)}</ul>"
             f"<div class='meta'>{e(str(row['file']))} · invoice date {e(str(row['invoice_date'] or '—'))} · due {e(str(row['due_date'] or '—'))} · technical reason: {e(str(row['reasons']))}</div>"
             f"{misses(row)}</div>"
@@ -260,7 +275,7 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         notes = []
         if phrase := flagged[str(row["file"])]:
             notes.append(
-                f"This PDF contains text that tries to give orders to software: \u201c{e(phrase)}\u201d. It was ignored and the values were read normally. <span class='todo'>Make sure it's a real invoice from this supplier.</span>"
+                f"This PDF contains text that tries to give orders to software: \u201c{e(phrase)}\u201d. The code checks still passed, but text like this can try to change what gets read. <span class='todo'>Compare the total with the PDF and make sure it's a real invoice from this supplier.</span>"
             )
         if row["confidence"] == "vision":
             notes.append(
@@ -271,7 +286,7 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         parts.append(
             "<div class='card glance'><div class='top'>"
             f"<div><span class='who'>{e(str(row['supplier_name']))}</span> · {e(str(row['invoice_number']))}</div>"
-            f"<div class='amt'>{money(row['gross_total'])}</div></div>"
+            f"<div class='amt'>{e(money([row]))}</div></div>"
             f"<ul>{''.join(f'<li>{n}{opener}</li>' for n in notes)}</ul>"
             f"<div class='meta'>{e(str(row['file']))} · still counted as ready to book</div></div>"
         )
@@ -284,7 +299,7 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         parts.append(
             f"<tr><td>{e(str(row['supplier_name']))}{'<div class=flag>see Worth a glance</div>' if row in glance else ''}{misses(row)}</td><td>{e(str(row['invoice_number']))}</td>"
             f"<td>{e(str(row['invoice_date']))}</td><td>{e(str(row['due_date'] or 'none printed'))}</td>"
-            f"<td class='num'>{money(row['gross_total'])}</td>"
+            f"<td class='num'>{e(money([row]))}</td>"
             f"<td><span class='pill {e(str(row['confidence']))}'>{'quotes checked' if row['confidence'] == 'verified' else 'scan, read from image' if row['confidence'] == 'vision' else e(str(row['confidence']))}</span></td>"
             f"<td>{f'<a href={chr(39)}{link}{chr(39)}>open</a>' if link else ''}</td></tr>"
         )

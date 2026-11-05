@@ -43,12 +43,12 @@ REASONS = [
     ),
     (
         "lines sum 100.00 != net 90.00",
-        "add up to €100.00, but the invoice says the net total is €90.00",
+        "add up to 100.00, but the invoice says the net total is 90.00",
         "corrected invoice",
     ),
     (
         "net + VAT 121.00 != gross 125.00",
-        "Net + VAT is €121.00, but the invoice total says €125.00",
+        "Net + VAT is 121.00, but the invoice total says 125.00",
         "which total is right",
     ),
     (
@@ -279,8 +279,8 @@ def test_one_card_per_review_row_with_counts_and_totals(tmp_path: Path) -> None:
     page, _, _ = render(tmp_path, ready, review)
 
     assert page.count("<div class='card'>") == 2
-    assert "<b>3</b><span>ready to book · €3,500.75</span>" in page
-    assert "<b>2</b><span>need you · €1,244.50</span>" in page
+    assert "<b>3</b><span>ready to book · 3,500.75 EUR</span>" in page
+    assert "<b>2</b><span>need you · 1,244.50 EUR</span>" in page
     assert "Ready to book (3)" in page
     assert "5 PDFs read" in page
 
@@ -296,7 +296,7 @@ def test_extraction_failed_row_with_no_fields_does_not_crash(tmp_path: Path) -> 
     assert "Unknown supplier" in page
     assert "no number read" in page
     assert "<div class='amt'>—</div>" in page
-    assert "<b>1</b><span>need you · €0.00</span>" in page
+    assert "<b>1</b><span>need you · —</span>" in page
 
 
 def test_empty_review_tab_shows_nothing_to_check(tmp_path: Path) -> None:
@@ -307,7 +307,7 @@ def test_empty_review_tab_shows_nothing_to_check(tmp_path: Path) -> None:
     assert "Needs you (0)" in page
     assert "Nothing to check. Every invoice passed." in page
     assert "<div class='card'>" not in page
-    assert "<b>0</b><span>need you · €0.00</span>" in page
+    assert "<b>0</b><span>need you · —</span>" in page
 
 
 def test_empty_ready_tab_and_empty_review_tab_still_render(tmp_path: Path) -> None:
