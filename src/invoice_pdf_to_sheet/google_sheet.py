@@ -68,13 +68,13 @@ def load_credentials() -> Credentials:
 def as_text(value: str | float | None) -> str | float | int:
     """Under USER_ENTERED, Sheets turns text into formulas, error values, booleans, numbers, dates or times (locale
     dependent, e.g. "Oct 1, 2026"); a leading apostrophe (not shown in the cell) keeps such text exactly as typed. Text
-    with no digit, no boolean word and no formula/error start can't be coerced and goes as is. Non-finite numbers aren't
+    with no digit, no boolean word and no formula/error/apostrophe start can't be coerced and goes as is. Non-finite numbers aren't
     valid JSON, so they go as text too."""
     if value is None:
         return ""
     if isinstance(value, str):
         coercible = (
-            value.lstrip().startswith(("=", "+", "-", "@", "#"))
+            value.lstrip().startswith(("=", "+", "-", "@", "#", "'"))
             or any(c.isdigit() for c in value)
             or value.strip().casefold() in ("true", "false")
         )
@@ -128,9 +128,11 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
         links[row.file] = uploaded["webViewLink"]
 
     def tab(
-        sheet_id: int, name: str, fill: dict[str, float], rows: int
+        sheet_id: int, name: str, fill: dict[str, float], rows: list[ResultRow]
     ) -> dict[str, Any]:
-        """A tab formatted like the xlsx: coloured bold header, frozen header and file column, filter, widths, formats."""
+        """A tab formatted like the xlsx: coloured bold header, frozen header and file column, filter, widths, formats.
+        The pdf_link cell is set here as plain text with a link (no formula: =HYPERLINK's argument separator depends on
+        the Sheet's locale and shows #ERROR! where it is ';')."""
         cell_formats = [
             {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.00"}}
             if column in MONEY
@@ -139,7 +141,7 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
             else {"wrapStrategy": "WRAP", "verticalAlignment": "TOP"}
             if column in ("evidence", "reasons")
             else {}
-            for column in COLUMNS
+            for column in COLUMNS[:-1]
         ]
         header = {
             "textFormat": {
@@ -158,7 +160,7 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
                 "range": {
                     "sheetId": sheet_id,
                     "startRowIndex": 0,
-                    "endRowIndex": rows + 1,
+                    "endRowIndex": len(rows) + 1,
                     "startColumnIndex": 0,
                     "endColumnIndex": len(COLUMNS),
                 }
@@ -173,8 +175,26 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
                     "rowData": [
                         {"values": [{"userEnteredFormat": header} for _ in COLUMNS]},
                         *(
-                            {"values": [{"userEnteredFormat": f} for f in cell_formats]}
-                            for _ in range(rows)
+                            {
+                                "values": [
+                                    *({"userEnteredFormat": f} for f in cell_formats),
+                                    {
+                                        "userEnteredValue": {"stringValue": row.file},
+                                        "userEnteredFormat": {
+                                            "textFormat": {
+                                                "link": {"uri": links[row.file]}
+                                            }
+                                        },
+                                    }
+                                    if row.file in links
+                                    else {
+                                        "userEnteredValue": {
+                                            "stringValue": "(not uploaded)"
+                                        }
+                                    },
+                                ]
+                            }
+                            for row in rows
                         ),
                     ],
                 }
@@ -191,13 +211,13 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
                         0,
                         "Ready",
                         {"red": 0.12, "green": 0.16, "blue": 0.22},
-                        len(ready),
+                        ready,
                     ),
                     tab(
                         1,
                         "Needs review",
                         {"red": 0.71, "green": 0.33, "blue": 0.04},
-                        len(review),
+                        review,
                     ),
                 ],
             },
@@ -217,15 +237,10 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
             list(COLUMNS),
             *(
                 [
-                    *(
-                        str(value)
-                        if column in DATES and real_date(value)
-                        else as_text(value)
-                        for column, value in zip(COLUMNS[:-1], row.cells(), strict=True)
-                    ),
-                    f'=HYPERLINK("{links[row.file]}", "{row.file.replace('"', '""')}")'
-                    if row.file in links
-                    else "(not uploaded)",
+                    str(value)
+                    if column in DATES and real_date(value)
+                    else as_text(value)
+                    for column, value in zip(COLUMNS[:-1], row.cells(), strict=True)
                 ]
                 for row in rows
             ),

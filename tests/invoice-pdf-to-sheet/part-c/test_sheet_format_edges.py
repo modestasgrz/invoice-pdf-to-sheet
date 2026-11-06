@@ -49,6 +49,13 @@ def tabs(sheets: MagicMock) -> list[dict[str, Any]]:
     return result
 
 
+def link_cell(tab: dict[str, Any], row: int) -> dict[str, Any]:
+    cell: dict[str, Any] = tab["data"][0]["rowData"][row + 1]["values"][
+        COLUMNS.index("pdf_link")
+    ]
+    return cell
+
+
 def written(sheets: MagicMock) -> list[list[Any]]:
     data = sheets.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs[
         "body"
@@ -106,8 +113,16 @@ def test_many_rows_filter_row_data_and_values_agree(
     assert len(ready["data"][0]["rowData"]) == 751
     assert review["basicFilter"]["range"]["endRowIndex"] == 4
     assert len(written(sheets)[0]) == 751
-    first, last = ready["data"][0]["rowData"][1], ready["data"][0]["rowData"][750]
-    assert first == last
+    assert all(len(r) == len(COLUMNS) - 1 for r in written(sheets)[0][1:])
+    for i in range(750):
+        assert link_cell(ready, i) == {
+            "userEnteredValue": {"stringValue": f"{i}.pdf"},
+            "userEnteredFormat": {"textFormat": {"link": {"uri": LINK}}},
+        }
+        assert (
+            ready["data"][0]["rowData"][i + 1]["values"][:-1]
+            == (ready["data"][0]["rowData"][1]["values"][:-1])
+        )
 
 
 def test_every_column_has_a_width_and_widths_are_positive_pixels(
@@ -190,6 +205,12 @@ def test_one_date_none_other_iso(
         " 2026-10-01",
         "2026-10-01\n",
         "1/10/2026",
+        "Oct 1, 2026",
+        "2026-10-01T00:00:00",
+        "2026-10-01; 2026-10-02",
+        "2026-02-30",
+        "2026-13-01",
+        "٢٠٢٦-١٠-٠١",
         "-2026-10-01",
         "+2026-10-01",
     ],
@@ -277,27 +298,39 @@ def test_numeric_looking_text_in_text_columns_stays_text(
     assert row[COLUMNS.index("supplier_vat_id")] == "'TRUE"
 
 
-def test_pdf_link_column_is_a_hyperlink_formula_after_the_15_cells(
+def test_pdf_link_cell_is_text_with_a_link_in_the_create_body_not_a_formula(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sheets = run(monkeypatch, [make_row(tmp_path)], [make_row(tmp_path, "b.pdf")])
 
     ready, review = written(sheets)
     assert COLUMNS[-1] == "pdf_link"
-    assert len(ready[1]) == len(COLUMNS)
-    assert ready[1][-1] == f'=HYPERLINK("{LINK}", "a.pdf")'
-    assert review[1][-1] == f'=HYPERLINK("{LINK}", "b.pdf")'
+    assert len(ready[1]) == len(COLUMNS) - 1
+    assert len(review[1]) == len(COLUMNS) - 1
+    ready_tab, review_tab = tabs(sheets)
+    assert len(ready_tab["data"][0]["rowData"][1]["values"]) == len(COLUMNS)
+    assert link_cell(ready_tab, 0) == {
+        "userEnteredValue": {"stringValue": "a.pdf"},
+        "userEnteredFormat": {"textFormat": {"link": {"uri": LINK}}},
+    }
+    assert link_cell(review_tab, 0) == {
+        "userEnteredValue": {"stringValue": "b.pdf"},
+        "userEnteredFormat": {"textFormat": {"link": {"uri": LINK}}},
+    }
 
 
-def test_pdf_link_escapes_quotes_in_the_label(
+def test_pdf_link_label_with_quotes_stays_raw(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sheets = run(monkeypatch, [make_row(tmp_path, 'we"ird.pdf')], [])
 
-    assert written(sheets)[0][1][-1] == f'=HYPERLINK("{LINK}", "we""ird.pdf")'
+    assert link_cell(tabs(sheets)[0], 0)["userEnteredValue"] == {
+        "stringValue": 'we"ird.pdf'
+    }
+    assert "HYPERLINK" not in json.dumps(sheets.spreadsheets.mock_calls, default=str)
 
 
-def test_missing_and_symlinked_pdfs_say_not_uploaded(
+def test_missing_and_symlinked_pdfs_say_not_uploaded_without_a_link(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "real.pdf"
@@ -308,9 +341,71 @@ def test_missing_and_symlinked_pdfs_say_not_uploaded(
     symlinked = ResultRow(file="link.pdf", pdf_path=link)
     sheets = run(monkeypatch, [missing], [symlinked])
 
-    ready, review = written(sheets)
-    assert ready[1][-1] == "(not uploaded)"
-    assert review[1][-1] == "(not uploaded)"
+    ready_tab, review_tab = tabs(sheets)
+    assert link_cell(ready_tab, 0) == {
+        "userEnteredValue": {"stringValue": "(not uploaded)"}
+    }
+    assert link_cell(review_tab, 0) == {
+        "userEnteredValue": {"stringValue": "(not uploaded)"}
+    }
+
+
+def test_link_cells_follow_row_order_when_some_rows_are_not_uploaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gone = ResultRow(file="gone.pdf", pdf_path=tmp_path / "gone.pdf")
+    rows = [make_row(tmp_path, "a.pdf"), gone, make_row(tmp_path, "c.pdf")]
+    sheets = run(monkeypatch, rows, [])
+
+    tab = tabs(sheets)[0]
+    assert [link_cell(tab, i)["userEnteredValue"]["stringValue"] for i in range(3)] == [
+        "a.pdf",
+        "(not uploaded)",
+        "c.pdf",
+    ]
+    assert [("userEnteredFormat" in link_cell(tab, i)) for i in range(3)] == [
+        True,
+        False,
+        True,
+    ]
+
+
+def test_no_written_value_starts_with_an_equals_sign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evil = '=HYPERLINK("http://evil")'
+    rows = [
+        make_row(
+            tmp_path,
+            "=1+1.pdf",
+            supplier_name=evil,
+            supplier_vat_id="=A1",
+            invoice_number="=2*3",
+            invoice_date="=NOW()",
+            due_date=" =1",
+            currency="=x",
+            evidence=evil,
+            reasons=[evil, "=y"],
+        ),
+        make_row(
+            tmp_path,
+            "=HYPERLINK(x).pdf",
+            supplier_name="+cmd",
+            invoice_date="2026-10-01",
+        ),
+    ]
+    sheets = run(monkeypatch, rows, rows)
+
+    batch = sheets.spreadsheets.return_value.values.return_value.batchUpdate
+    assert batch.call_count == 1
+    for data in batch.call_args.kwargs["body"]["data"]:
+        for row in data["values"]:
+            for value in row:
+                assert not (isinstance(value, str) and value.startswith("="))
+    for tab in tabs(sheets):
+        for row in tab["data"][0]["rowData"]:
+            for cell in row["values"]:
+                assert "formulaValue" not in cell.get("userEnteredValue", {})
 
 
 def test_header_row_ends_with_pdf_link_label(
