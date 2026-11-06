@@ -67,7 +67,7 @@ class InvoiceFields(BaseModel):
 
 
 class ResultRow(BaseModel):
-    file: Text
+    file: str
     supplier_name: str | None = None
     supplier_vat_id: str | None = None
     invoice_number: str | None = None

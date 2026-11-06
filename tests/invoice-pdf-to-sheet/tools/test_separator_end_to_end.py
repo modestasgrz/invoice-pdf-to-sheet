@@ -141,3 +141,13 @@ def test_text_pdf_grown_past_the_size_limit_is_not_reread(
     monkeypatch.setattr(viewer, "MAX_BYTES", path.stat().st_size - 1)
     viewer.render(xlsx, None, out)
     assert "give orders to software" not in out.read_text(encoding="utf-8")
+
+
+def test_file_names_that_clean_to_the_same_text_stay_distinct(tmp_path: Path) -> None:
+    rows = [
+        ResultRow(file=name, pdf_path=tmp_path / name)
+        for name in ("inv.pdf", "inv\x01.pdf", "a; b.pdf")
+    ]
+
+    assert [row.file for row in rows] == ["inv.pdf", "inv\x01.pdf", "a; b.pdf"]
+    assert len({row.file for row in rows}) == 3
