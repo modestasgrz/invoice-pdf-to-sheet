@@ -1,4 +1,5 @@
 import os
+from datetime import date, datetime
 from pathlib import Path
 
 from loguru import logger
@@ -72,11 +73,25 @@ def write_xlsx(ready: list[ResultRow], review: list[ResultRow], path: Path) -> N
     book.save(path)
 
 
+# a hand-edited cell may hold a number or a typed date where the row model wants text
+TEXT = {
+    "file",
+    "supplier_name",
+    "supplier_vat_id",
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "currency",
+    "evidence",
+    "reasons",
+}
+
+
 def inside(pdf_dir: Path, name: str) -> Path:
     """The PDF for a file name taken from a (maybe hand-edited) xlsx: a plain name inside pdf_dir, else pdf_dir itself,
     which is not a file, so nothing outside the folder is ever uploaded."""
     candidate = pdf_dir / name
-    if name in ("", ".", "..") or Path(name).name != name or "\\" in name:
+    if Path(name).name != name or "\\" in name or not name.lower().endswith(".pdf"):
         logger.warning("xlsx row with an unsafe file name: not uploaded")
         return pdf_dir
     if not candidate.resolve().is_relative_to(pdf_dir.resolve()):
@@ -90,11 +105,24 @@ def read_xlsx(path: Path, pdf_dir: Path) -> tuple[list[ResultRow], list[ResultRo
     book = load_workbook(path)
     tabs = []
     for name in ("Ready", "Needs review"):
-        rows = list(book[name].iter_rows(values_only=True))
+        rows = [
+            [
+                v.date().isoformat()
+                if isinstance(v, datetime)
+                else v.isoformat()
+                if isinstance(v, date)
+                else str(v)
+                if column in TEXT and v is not None
+                else v
+                for column, v in zip(COLUMNS, cells, strict=False)
+            ]
+            for cells in book[name].iter_rows(values_only=True)
+            if any(v is not None for v in cells)
+        ]
         tabs.append(
             [
-                ResultRow(
-                    **{
+                ResultRow.model_validate(
+                    {
                         **{
                             k: v
                             for k, v in zip(COLUMNS[:-1], cells, strict=False)

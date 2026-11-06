@@ -275,6 +275,7 @@ def test_publish_sends_the_xlsx_rows_to_google_without_the_model(
     no_model: None,
 ) -> None:
     pdfs = tmp_path / "invoices"
+    pdfs.mkdir()
     xlsx = tmp_path / "r.xlsx"
     write_xlsx(
         [row(pdfs, "a.pdf", gross_total=5.0)],

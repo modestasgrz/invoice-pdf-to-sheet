@@ -73,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.xlsx.is_file():
             print(f"no xlsx at {args.xlsx}", file=sys.stderr)
             return 2
+        if not args.input.is_dir():
+            print(f"no PDF folder at {args.input}", file=sys.stderr)
+            return 2
         try:
             ready, review = read_xlsx(args.xlsx, args.input)
         except Exception as error:

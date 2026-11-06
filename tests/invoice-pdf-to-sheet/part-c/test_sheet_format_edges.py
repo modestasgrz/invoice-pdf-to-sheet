@@ -485,11 +485,6 @@ def test_non_finite_amounts_never_reach_a_row(tmp_path: Path, bad: float) -> Non
         ResultRow(file="a.pdf", pdf_path=tmp_path / "a.pdf", gross_total=bad)
 
 
-def test_as_text_still_neutralises_non_finite_numbers() -> None:
-    assert google_sheet.as_text(float("-inf")) == "'-inf"
-    assert google_sheet.as_text(float("nan")) == "nan"
-
-
 def test_none_amounts_are_empty_cells_and_zero_stays_a_number(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

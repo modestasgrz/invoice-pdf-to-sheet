@@ -88,3 +88,55 @@ def test_unreadable_xlsx_is_a_clean_exit_2(
         assert err.startswith(f"cannot read {path}: ")
         assert "Traceback" not in err
     assert calls == []
+
+
+@pytest.mark.parametrize("name", [".env", "client_secret.json", "notes.txt"])
+def test_only_pdf_names_can_be_uploaded(tmp_path: Path, name: str) -> None:
+    folder = tmp_path / "in"
+    folder.mkdir()
+    (folder / name).write_text("secret")
+    out = tmp_path / "out.xlsx"
+    write_xlsx([ResultRow(file=name, pdf_path=folder / name)], [], out)
+
+    [row], _ = read_xlsx(out, folder)
+
+    assert row.pdf_path == folder
+
+
+def test_missing_input_folder_is_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "out.xlsx"
+    write_xlsx([], [], out)
+    monkeypatch.setattr(google_sheet, "publish", lambda *a: "u")
+
+    code = cli.main(["publish", "--xlsx", str(out), "--input", str(tmp_path / "typo")])
+
+    assert code == 2
+    assert f"no PDF folder at {tmp_path / 'typo'}" in capsys.readouterr().err
+
+
+def test_hand_edited_cells_are_read_as_text(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    from openpyxl import load_workbook
+    from openpyxl.styles import Font
+
+    folder = tmp_path / "in"
+    folder.mkdir()
+    out = tmp_path / "out.xlsx"
+    write_xlsx([ResultRow(file="a.pdf", pdf_path=folder / "a.pdf")], [], out)
+    book = load_workbook(out)
+    sheet = book["Ready"]
+    sheet.cell(
+        row=2, column=COLUMNS.index("invoice_date") + 1, value=datetime(2026, 10, 1)
+    )
+    sheet.cell(row=2, column=COLUMNS.index("invoice_number") + 1, value=12345)
+    sheet.cell(row=3, column=2).font = Font(bold=True)
+    book.save(out)
+
+    [row], review = read_xlsx(out, folder)
+
+    assert row.invoice_date == "2026-10-01"
+    assert row.invoice_number == "12345"
+    assert review == []

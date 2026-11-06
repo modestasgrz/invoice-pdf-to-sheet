@@ -146,7 +146,6 @@ def test_coercible_text_is_kept_as_typed() -> None:
     assert google_sheet.as_text("000123") == "'000123"
     assert google_sheet.as_text("2026-10-01") == "'2026-10-01"
     assert google_sheet.as_text("TRUE") == "'TRUE"
-    assert google_sheet.as_text(float("nan")) == "nan"
 
 
 def test_revoked_token_falls_back_to_sign_in(

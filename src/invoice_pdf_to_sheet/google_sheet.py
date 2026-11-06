@@ -1,4 +1,3 @@
-import math
 import os
 import re
 from datetime import date, datetime
@@ -68,8 +67,8 @@ def load_credentials() -> Credentials:
 def as_text(value: str | float | None) -> str | float | int:
     """Under USER_ENTERED, Sheets turns text into formulas, error values, booleans, numbers, dates or times (locale
     dependent, e.g. "Oct 1, 2026"); a leading apostrophe (not shown in the cell) keeps such text exactly as typed. Text
-    with no digit, no boolean word and no formula/error/apostrophe start can't be coerced and goes as is. Non-finite numbers aren't
-    valid JSON, so they go as text too."""
+    with no digit, no boolean word and no formula/error/apostrophe start can't be coerced and goes as is. Amounts are
+    finite (ResultRow rejects NaN/inf), so numbers go as they are."""
     if value is None:
         return ""
     if isinstance(value, str):
@@ -79,8 +78,6 @@ def as_text(value: str | float | None) -> str | float | int:
             or value.strip().casefold() in ("true", "false")
         )
         return "'" + value if coercible else value
-    if not math.isfinite(value):
-        return as_text(str(value))
     return value
 
 
