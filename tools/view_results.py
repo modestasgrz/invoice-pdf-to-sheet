@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 from pdfplumber.utils.exceptions import MalformedPDFException, PdfminerException
 
 from invoice_pdf_to_sheet.evaluate import FIELDS, evaluate, same
+from invoice_pdf_to_sheet.extract import MAX_BYTES, MAX_PAGES
 
 PLAIN: list[tuple[str, str, str]] = [
     (
@@ -206,12 +207,16 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         )
 
     def suspicious(row: dict[str, Any]) -> str:
-        """Re-read only PDFs the run already read (method text): refused files (size, pages, unreadable) and scans stay closed."""
+        """Re-read only PDFs the run read as text, under the run's own limits (the file may have changed since)."""
         path = pdf(row)
         if row["method"] != "text" or not path or not path.is_file():
             return ""
+        if path.stat().st_size > MAX_BYTES:
+            return ""
         try:
             with pdfplumber.open(path) as document:
+                if len(document.pages) > MAX_PAGES:
+                    return ""
                 text = " ".join(p.extract_text() or "" for p in document.pages)
         except UNREADABLE as error:
             logger.warning(

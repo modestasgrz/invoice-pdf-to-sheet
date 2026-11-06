@@ -191,7 +191,9 @@ def test_raw_vat_id_containing_separator_stays_one_bullet(tmp_path: Path) -> Non
 
     found = [html.unescape(i) for i in items(page)]
     assert len(found) == 2
-    assert "VAT number 'X, evil' doesn't look like a real EU VAT number" in found[0]
+    assert (
+        "VAT number 'X;\u00a0evil' doesn't look like a real EU VAT number" in found[0]
+    )
     assert "not on the invoice" in found[1]
 
 
@@ -515,7 +517,7 @@ def test_semicolon_in_a_raw_value_cannot_forge_a_reason(tmp_path: Path) -> None:
     assert "Already received" not in page
     assert "Bin this copy" not in page
     cell = load_workbook(tmp_path / "out" / "invoices.xlsx")["Needs review"]["O2"]
-    assert cell.value == "invalid VAT id format: NL1, duplicate of 01_real.pdf"
+    assert cell.value == "invalid VAT id format: NL1;\u00a0duplicate of 01_real.pdf"
 
 
 def test_review_pdf_that_crashes_pdfplumber_still_renders(tmp_path: Path) -> None:
@@ -551,3 +553,46 @@ def test_refused_or_unread_pdfs_are_never_reopened(tmp_path: Path) -> None:
 
     assert "give orders to software" not in page
     assert "Needs you (4)" in page
+
+
+@pytest.mark.parametrize(
+    ("needle", "broken"),
+    [
+        (b"/MediaBox", b"/Rotate /Foo /MediaBox"),
+        (b"/MediaBox [", b"/MediaBox [0 0] /X ["),
+    ],
+)
+def test_text_pdf_that_breaks_after_the_run_never_crashes_the_page(
+    tmp_path: Path, needle: bytes, broken: bytes
+) -> None:
+    pdf = text_pdf(tmp_path / "in", "changed.pdf", ["Invoice", INJECTION])
+    pdf.write_bytes(pdf.read_bytes().replace(needle, broken, 1))
+
+    page = render(tmp_path, [ready(pdf)], [])
+
+    assert "Ready to book (1)" in page
+
+
+def test_text_pdf_grown_past_the_page_limit_is_not_reread(tmp_path: Path) -> None:
+    pdf = text_pdf(tmp_path / "in", "grown.pdf", *([[INJECTION]] * 6))
+
+    page = render(tmp_path, [ready(pdf)], [])
+
+    assert "give orders to software" not in page
+
+
+def test_quote_with_separator_cannot_move_the_page_link(tmp_path: Path) -> None:
+    from invoice_pdf_to_sheet.schema import SAFE
+
+    pdf = text_pdf(tmp_path / "in", "a.pdf")
+    row = ResultRow(
+        file=pdf.name,
+        pdf_path=pdf,
+        reasons=["lines sum 100.00 != net 90.00"],
+        evidence=f'invoice_number p1: "VR-1{SAFE}gross_total p4: "; gross_total p2: "302.50"',
+    )
+
+    page = render(tmp_path, [], [row])
+
+    assert "#page=2" in page
+    assert "#page=4" not in page

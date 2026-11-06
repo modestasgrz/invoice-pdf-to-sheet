@@ -23,6 +23,12 @@ COLUMNS = [
 ]
 
 
+# "; " joins reasons and evidence quotes in one cell. Inside a value (raw VAT id, date, file name, quote) it is written
+# with a no-break space, which looks the same but can't be split on, so printed text can't forge an extra entry.
+SEPARATOR = "; "
+SAFE = ";\u00a0"
+
+
 class LineItem(BaseModel):
     description: str
     quantity: float
@@ -71,6 +77,7 @@ class ResultRow(BaseModel):
     def cells(self) -> list[str | float | int | None]:
         """Row values in COLUMNS order, without pdf_link (each writer renders its own link)."""
         values = self.model_dump()
-        # a raw value inside a reason (VAT id, date, file name) may not carry the separator, or it could forge a reason
-        values["reasons"] = "; ".join(r.replace(";", ",") for r in self.reasons)
+        values["reasons"] = SEPARATOR.join(
+            r.replace(SEPARATOR, SAFE) for r in self.reasons
+        )
         return [values[column] for column in COLUMNS[:-1]]

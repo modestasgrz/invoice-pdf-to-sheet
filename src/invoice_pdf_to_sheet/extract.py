@@ -10,7 +10,7 @@ import pdfplumber
 from loguru import logger
 
 from invoice_pdf_to_sheet.checks import check_evidence, check_fields
-from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
+from invoice_pdf_to_sheet.schema import SAFE, SEPARATOR, InvoiceFields, ResultRow
 
 MODEL = "claude-sonnet-5-5"
 MAX_BYTES = 10 * 1048576
@@ -120,8 +120,9 @@ def extract_file(path: Path) -> ResultRow:
         else "unverified"
         if evidence_reasons
         else "verified",
-        evidence="; ".join(
-            f'{q.field} p{q.page}: "{q.quote}"' for q in fields.evidence
+        evidence=SEPARATOR.join(
+            f'{q.field} p{q.page}: "{q.quote.replace(SEPARATOR, SAFE)}"'
+            for q in fields.evidence
         ),
         reasons=check_fields(fields) + evidence_reasons,
     )
