@@ -71,5 +71,6 @@ class ResultRow(BaseModel):
     def cells(self) -> list[str | float | int | None]:
         """Row values in COLUMNS order, without pdf_link (each writer renders its own link)."""
         values = self.model_dump()
-        values["reasons"] = "; ".join(self.reasons)
+        # a raw value inside a reason (VAT id, date, file name) may not carry the separator, or it could forge a reason
+        values["reasons"] = "; ".join(r.replace(";", ",") for r in self.reasons)
         return [values[column] for column in COLUMNS[:-1]]

@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import quote
 
 import pdfplumber
+from loguru import logger
 from openpyxl import load_workbook
 from pdfplumber.utils.exceptions import MalformedPDFException, PdfminerException
 
@@ -110,14 +111,22 @@ PAGE_FIELD = {
     "invalid due date": "invoice_date",
     "due date before": "invoice_date",
 }
+# every way a PDF that changed since the run can fail to open; a bare `except Exception` is off by lint (BLE001)
+UNREADABLE = (
+    PdfminerException,
+    MalformedPDFException,
+    OSError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    AttributeError,
+    RecursionError,
+)
 SUSPICIOUS = re.compile(
     r"ignore (?:all |any )?(?:previous|prior|above|earlier) instructions|disregard (?:the|all|any|previous)\b|system prompt|you are now\b|mark (?:this|the) invoice as (?:approved|paid)",
     re.IGNORECASE,
 )
-
-REASON_STARTS = [
-    re.escape(re.sub(r"\\(.)", r"\1", pattern.split("(")[0])) for pattern, _, _ in PLAIN
-]
 
 CSS = """:root{--ink:#16181d;--mute:#6b7280;--line:#e5e7eb;--bg:#f7f7f5;--ok:#15803d;--rev:#b45309;--err:#b91c1c}
 *{box-sizing:border-box}body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
@@ -168,7 +177,7 @@ def page_of(reason: str, evidence: str) -> int:
     return int(pages.get(field) or next(iter(pages.values()), 1))
 
 
-def read(xlsx: Path) -> dict[str, list[dict[str, Any]]]:
+def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
     tabs: dict[str, list[dict[str, Any]]] = {}
     for sheet in load_workbook(xlsx).worksheets:
         header = [str(c.value) for c in sheet[1]]
@@ -178,11 +187,6 @@ def read(xlsx: Path) -> dict[str, list[dict[str, Any]]]:
             link = cells[-1].hyperlink
             row["href"] = link.target if link and link.target else ""
             tabs[sheet.title].append(row)
-    return tabs
-
-
-def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
-    tabs = read(xlsx)
     ready, review = tabs["Ready"], tabs["Needs review"]
     key: dict[str, dict[str, Any]] = (
         json.loads(key_path.read_text()) if key_path else {}
@@ -202,13 +206,17 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         )
 
     def suspicious(row: dict[str, Any]) -> str:
+        """Re-read only PDFs the run already read (method text): refused files (size, pages, unreadable) and scans stay closed."""
         path = pdf(row)
-        if not path or not path.is_file():
+        if row["method"] != "text" or not path or not path.is_file():
             return ""
         try:
             with pdfplumber.open(path) as document:
                 text = " ".join(p.extract_text() or "" for p in document.pages)
-        except (PdfminerException, MalformedPDFException):
+        except UNREADABLE as error:
+            logger.warning(
+                "{}: text scan skipped ({})", row["file"], type(error).__name__
+            )
             return ""
         match = SUSPICIOUS.search(" ".join(text.split()))
         return match.group(0) if match else ""
@@ -242,9 +250,7 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
     if not review:
         parts.append("<p class='meta'>Nothing to check. Every invoice passed.</p>")
     for row in review:
-        reasons = re.split(
-            f"; (?={'|'.join(REASON_STARTS)})", str(row["reasons"] or "")
-        )
+        reasons = str(row["reasons"] or "").split("; ")
         items = []
         for reason in reasons:
             said, todo = plain(reason)

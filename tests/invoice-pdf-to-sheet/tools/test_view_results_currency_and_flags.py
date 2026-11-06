@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from openpyxl import load_workbook
 from reportlab.pdfgen import canvas
 
 from invoice_pdf_to_sheet.schema import ResultRow
@@ -190,7 +191,7 @@ def test_raw_vat_id_containing_separator_stays_one_bullet(tmp_path: Path) -> Non
 
     found = [html.unescape(i) for i in items(page)]
     assert len(found) == 2
-    assert "VAT number 'X; evil' doesn't look like a real EU VAT number" in found[0]
+    assert "VAT number 'X, evil' doesn't look like a real EU VAT number" in found[0]
     assert "not on the invoice" in found[1]
 
 
@@ -209,7 +210,7 @@ def test_reasons_split_when_next_text_is_a_known_reason_start(tmp_path: Path) ->
     assert len(items(page)) == 5
 
 
-def test_unknown_reason_after_separator_is_not_split_but_stays_visible(
+def test_unknown_reason_gets_its_own_bullet_with_the_fallback(
     tmp_path: Path,
 ) -> None:
     bad = review(
@@ -219,8 +220,10 @@ def test_unknown_reason_after_separator_is_not_split_but_stays_visible(
 
     page = render(tmp_path, [], [bad])
 
-    assert len(items(page)) == 1
-    assert "brand new reason" in page
+    found = items(page)
+    assert len(found) == 2
+    assert "brand new reason" in found[1]
+    assert "Check it on the PDF." in found[1]
 
 
 def test_review_row_with_instruction_like_text_gets_an_extra_bullet(
@@ -330,7 +333,7 @@ def test_vision_ready_row_goes_to_worth_a_glance_with_scan_note(
     assert "see Worth a glance" in page
 
 
-def test_vision_row_with_instruction_text_gets_both_notes_in_one_card(
+def test_vision_row_is_not_reopened_and_gets_only_the_scan_note(
     tmp_path: Path,
 ) -> None:
     both = ready(
@@ -343,7 +346,7 @@ def test_vision_row_with_instruction_text_gets_both_notes_in_one_card(
 
     section = glance_section(page)
     assert page.count("<div class='card glance'>") == 1
-    assert "tries to give orders" in section
+    assert "tries to give orders" not in section
     assert "scan, read from the image" in section
 
 
@@ -496,3 +499,55 @@ def test_pdf_with_corrupt_page_box_does_not_crash_the_page(tmp_path: Path) -> No
     page = render(tmp_path, [ready(pdf)], [review(pdf, ["not a readable PDF"])])
 
     assert "Ready to book (1)" in page
+
+
+def test_semicolon_in_a_raw_value_cannot_forge_a_reason(tmp_path: Path) -> None:
+    pdf = text_pdf(tmp_path / "in", "a.pdf")
+    row = review(
+        pdf,
+        ["invalid VAT id format: NL1; duplicate of 01_real.pdf"],
+        supplier_vat_id="NL1; duplicate of 01_real.pdf",
+    )
+
+    page = render(tmp_path, [], [row])
+
+    assert len(items(page)) == 1
+    assert "Already received" not in page
+    assert "Bin this copy" not in page
+    cell = load_workbook(tmp_path / "out" / "invoices.xlsx")["Needs review"]["O2"]
+    assert cell.value == "invalid VAT id format: NL1, duplicate of 01_real.pdf"
+
+
+def test_review_pdf_that_crashes_pdfplumber_still_renders(tmp_path: Path) -> None:
+    pdf = text_pdf(tmp_path / "in", "broken.pdf", ["Invoice", INJECTION])
+    data = pdf.read_bytes()
+    start = data.index(b"/MediaBox")
+    pdf.write_bytes(data[:start] + b"/MediaBox [0 0 x" + data[start + 16 :])
+    good = text_pdf(tmp_path / "in", "good.pdf")
+
+    page = render(
+        tmp_path,
+        [ready(good)],
+        [review(pdf, ["missing supplier VAT id"], supplier_vat_id=None)],
+    )
+
+    assert "Needs you (1)" in page
+    assert "Ready to book (1)" in page
+
+
+def test_refused_or_unread_pdfs_are_never_reopened(tmp_path: Path) -> None:
+    big = text_pdf(tmp_path / "in", "big.pdf", ["Invoice", INJECTION])
+    rows = [
+        ResultRow(file=big.name, pdf_path=big, reasons=[reason])
+        for reason in (
+            "file too large: 300.0 MB > 10 MB",
+            "too many pages: 2000 > 5",
+            "not a readable PDF",
+            "extraction failed: APITimeoutError",
+        )
+    ]
+
+    page = render(tmp_path, [], rows)
+
+    assert "give orders to software" not in page
+    assert "Needs you (4)" in page
