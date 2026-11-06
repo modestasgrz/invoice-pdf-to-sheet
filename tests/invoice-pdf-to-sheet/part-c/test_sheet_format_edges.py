@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from invoice_pdf_to_sheet import google_sheet
 from invoice_pdf_to_sheet.schema import COLUMNS, ResultRow
@@ -49,11 +50,41 @@ def tabs(sheets: MagicMock) -> list[dict[str, Any]]:
     return result
 
 
-def link_cell(tab: dict[str, Any], row: int) -> dict[str, Any]:
-    cell: dict[str, Any] = tab["data"][0]["rowData"][row + 1]["values"][
-        COLUMNS.index("pdf_link")
-    ]
-    return cell
+def link_requests(sheets: MagicMock) -> dict[int, dict[str, Any]]:
+    """The updateCells request per sheetId of the one spreadsheets().batchUpdate call (empty when it was never made)."""
+    batch = sheets.spreadsheets.return_value.batchUpdate
+    if not batch.called:
+        return {}
+    assert batch.call_count == 1
+    assert batch.call_args.kwargs["spreadsheetId"] == "S1"
+    requests: list[dict[str, Any]] = batch.call_args.kwargs["body"]["requests"]
+    assert all(set(r) == {"updateCells"} for r in requests)
+    result = {r["updateCells"]["range"]["sheetId"]: r["updateCells"] for r in requests}
+    assert len(result) == len(requests)
+    return result
+
+
+def link_cells(sheets: MagicMock, sheet_id: int) -> list[dict[str, Any]]:
+    request = link_requests(sheets)[sheet_id]
+    link = COLUMNS.index("pdf_link")
+    assert request["fields"] == "userEnteredValue,textFormatRuns"
+    assert request["range"] == {
+        "sheetId": sheet_id,
+        "startRowIndex": 1,
+        "endRowIndex": len(request["rows"]) + 1,
+        "startColumnIndex": link,
+        "endColumnIndex": link + 1,
+    }
+    assert all(len(r["values"]) == 1 for r in request["rows"])
+    cells: list[dict[str, Any]] = [r["values"][0] for r in request["rows"]]
+    return cells
+
+
+def linked(name: str, uri: str = LINK) -> dict[str, Any]:
+    return {
+        "userEnteredValue": {"stringValue": name},
+        "textFormatRuns": [{"startIndex": 0, "format": {"link": {"uri": uri}}}],
+    }
 
 
 def written(sheets: MagicMock) -> list[list[Any]]:
@@ -114,15 +145,11 @@ def test_many_rows_filter_row_data_and_values_agree(
     assert review["basicFilter"]["range"]["endRowIndex"] == 4
     assert len(written(sheets)[0]) == 751
     assert all(len(r) == len(COLUMNS) - 1 for r in written(sheets)[0][1:])
-    for i in range(750):
-        assert link_cell(ready, i) == {
-            "userEnteredValue": {"stringValue": f"{i}.pdf"},
-            "userEnteredFormat": {"textFormat": {"link": {"uri": LINK}}},
-        }
-        assert (
-            ready["data"][0]["rowData"][i + 1]["values"][:-1]
-            == (ready["data"][0]["rowData"][1]["values"][:-1])
-        )
+    assert link_cells(sheets, 0) == [linked(f"{i}.pdf") for i in range(750)]
+    assert link_cells(sheets, 1) == [linked(f"{i}.pdf") for i in range(3)]
+    rows = ready["data"][0]["rowData"]
+    assert all(len(r["values"]) == len(COLUMNS) - 1 for r in rows[1:])
+    assert all(r == rows[1] for r in rows[1:])
 
 
 def test_every_column_has_a_width_and_widths_are_positive_pixels(
@@ -143,8 +170,10 @@ def test_every_row_has_one_format_per_column(
     sheets = run(monkeypatch, [make_row(tmp_path)] * 2, [make_row(tmp_path)])
 
     for tab in tabs(sheets):
-        for row in tab["data"][0]["rowData"]:
-            assert len(row["values"]) == len(COLUMNS)
+        header, *data = tab["data"][0]["rowData"]
+        assert len(header["values"]) == len(COLUMNS)
+        assert data
+        assert all(len(row["values"]) == len(COLUMNS) - 1 for row in data)
 
 
 def test_evidence_and_reasons_wrap_and_nothing_else_does(
@@ -153,7 +182,7 @@ def test_evidence_and_reasons_wrap_and_nothing_else_does(
     sheets = run(monkeypatch, [make_row(tmp_path)], [])
 
     cells = tabs(sheets)[0]["data"][0]["rowData"][1]["values"]
-    for column, cell in zip(COLUMNS, cells, strict=True):
+    for column, cell in zip(COLUMNS[:-1], cells, strict=True):
         fmt = cell["userEnteredFormat"]
         if column in ("evidence", "reasons"):
             assert fmt == {"wrapStrategy": "WRAP", "verticalAlignment": "TOP"}
@@ -170,7 +199,7 @@ def test_money_and_date_columns_are_not_wrapped_and_other_columns_have_no_number
 
     cells = tabs(sheets)[0]["data"][0]["rowData"][1]["values"]
     formatted = {"net_total", "vat_total", "gross_total", "invoice_date", "due_date"}
-    for column, cell in zip(COLUMNS, cells, strict=True):
+    for column, cell in zip(COLUMNS[:-1], cells, strict=True):
         assert ("numberFormat" in cell["userEnteredFormat"]) == (column in formatted)
 
 
@@ -298,25 +327,59 @@ def test_numeric_looking_text_in_text_columns_stays_text(
     assert row[COLUMNS.index("supplier_vat_id")] == "'TRUE"
 
 
-def test_pdf_link_cell_is_text_with_a_link_in_the_create_body_not_a_formula(
+def test_pdf_link_cells_are_text_with_a_link_run_in_a_separate_update(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sheets = run(monkeypatch, [make_row(tmp_path)], [make_row(tmp_path, "b.pdf")])
 
     ready, review = written(sheets)
     assert COLUMNS[-1] == "pdf_link"
+    assert len(ready[0]) == len(COLUMNS)
     assert len(ready[1]) == len(COLUMNS) - 1
     assert len(review[1]) == len(COLUMNS) - 1
-    ready_tab, review_tab = tabs(sheets)
-    assert len(ready_tab["data"][0]["rowData"][1]["values"]) == len(COLUMNS)
-    assert link_cell(ready_tab, 0) == {
-        "userEnteredValue": {"stringValue": "a.pdf"},
-        "userEnteredFormat": {"textFormat": {"link": {"uri": LINK}}},
-    }
-    assert link_cell(review_tab, 0) == {
-        "userEnteredValue": {"stringValue": "b.pdf"},
-        "userEnteredFormat": {"textFormat": {"link": {"uri": LINK}}},
-    }
+    for tab in tabs(sheets):
+        assert len(tab["data"][0]["rowData"][1]["values"]) == len(COLUMNS) - 1
+    assert link_cells(sheets, 0) == [linked("a.pdf")]
+    assert link_cells(sheets, 1) == [linked("b.pdf")]
+    assert "HYPERLINK" not in repr(sheets.mock_calls)
+
+
+def test_values_are_written_before_the_link_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheets = run(monkeypatch, [make_row(tmp_path)], [])
+
+    calls = [
+        c[0]
+        for c in sheets.mock_calls
+        if c[0].endswith("batchUpdate") or c[0].endswith("create")
+    ]
+    assert calls == [
+        "spreadsheets().create",
+        "spreadsheets().values().batchUpdate",
+        "spreadsheets().batchUpdate",
+    ]
+
+
+def test_one_link_request_per_non_empty_tab(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    only_ready = run(monkeypatch, [make_row(tmp_path)], [])
+    only_review = run(monkeypatch, [], [make_row(tmp_path)])
+    both = run(monkeypatch, [make_row(tmp_path)], [make_row(tmp_path)])
+
+    assert list(link_requests(only_ready)) == [0]
+    assert list(link_requests(only_review)) == [1]
+    assert list(link_requests(both)) == [0, 1]
+
+
+def test_no_link_update_at_all_when_both_tabs_are_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sheets = run(monkeypatch, [], [])
+
+    sheets.spreadsheets.return_value.batchUpdate.assert_not_called()
+    assert link_requests(sheets) == {}
 
 
 def test_pdf_link_label_with_quotes_stays_raw(
@@ -324,13 +387,11 @@ def test_pdf_link_label_with_quotes_stays_raw(
 ) -> None:
     sheets = run(monkeypatch, [make_row(tmp_path, 'we"ird.pdf')], [])
 
-    assert link_cell(tabs(sheets)[0], 0)["userEnteredValue"] == {
-        "stringValue": 'we"ird.pdf'
-    }
-    assert "HYPERLINK" not in json.dumps(sheets.spreadsheets.mock_calls, default=str)
+    assert link_cells(sheets, 0) == [linked('we"ird.pdf')]
+    assert "HYPERLINK" not in repr(sheets.mock_calls)
 
 
-def test_missing_and_symlinked_pdfs_say_not_uploaded_without_a_link(
+def test_missing_and_symlinked_pdfs_say_not_uploaded_without_link_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "real.pdf"
@@ -341,13 +402,9 @@ def test_missing_and_symlinked_pdfs_say_not_uploaded_without_a_link(
     symlinked = ResultRow(file="link.pdf", pdf_path=link)
     sheets = run(monkeypatch, [missing], [symlinked])
 
-    ready_tab, review_tab = tabs(sheets)
-    assert link_cell(ready_tab, 0) == {
-        "userEnteredValue": {"stringValue": "(not uploaded)"}
-    }
-    assert link_cell(review_tab, 0) == {
-        "userEnteredValue": {"stringValue": "(not uploaded)"}
-    }
+    not_uploaded = {"userEnteredValue": {"stringValue": "(not uploaded)"}}
+    assert link_cells(sheets, 0) == [not_uploaded]
+    assert link_cells(sheets, 1) == [not_uploaded]
 
 
 def test_link_cells_follow_row_order_when_some_rows_are_not_uploaded(
@@ -357,17 +414,20 @@ def test_link_cells_follow_row_order_when_some_rows_are_not_uploaded(
     rows = [make_row(tmp_path, "a.pdf"), gone, make_row(tmp_path, "c.pdf")]
     sheets = run(monkeypatch, rows, [])
 
-    tab = tabs(sheets)[0]
-    assert [link_cell(tab, i)["userEnteredValue"]["stringValue"] for i in range(3)] == [
-        "a.pdf",
-        "(not uploaded)",
-        "c.pdf",
+    assert link_cells(sheets, 0) == [
+        linked("a.pdf"),
+        {"userEnteredValue": {"stringValue": "(not uploaded)"}},
+        linked("c.pdf"),
     ]
-    assert [("userEnteredFormat" in link_cell(tab, i)) for i in range(3)] == [
-        True,
-        False,
-        True,
-    ]
+
+
+def test_link_cell_text_is_the_raw_file_name_even_when_formula_like(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheets = run(monkeypatch, [make_row(tmp_path, "=1+1.pdf")], [])
+
+    assert link_cells(sheets, 0) == [linked("=1+1.pdf")]
+    assert written(sheets)[0][1][0] == "'=1+1.pdf"
 
 
 def test_no_written_value_starts_with_an_equals_sign(
@@ -406,6 +466,9 @@ def test_no_written_value_starts_with_an_equals_sign(
         for row in tab["data"][0]["rowData"]:
             for cell in row["values"]:
                 assert "formulaValue" not in cell.get("userEnteredValue", {})
+    for sheet_id in (0, 1):
+        for cell in link_cells(sheets, sheet_id):
+            assert set(cell["userEnteredValue"]) == {"stringValue"}
 
 
 def test_header_row_ends_with_pdf_link_label(
@@ -416,41 +479,10 @@ def test_header_row_ends_with_pdf_link_label(
     assert written(sheets)[0][0][-1] == "pdf_link"
 
 
-@pytest.mark.parametrize(
-    ("amount", "text"),
-    [(float("nan"), "nan"), (float("inf"), "inf"), (float("-inf"), "'-inf")],
-)
-def test_non_finite_amounts_go_as_text_and_payload_stays_valid_json(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, amount: float, text: str
-) -> None:
-    row = make_row(
-        tmp_path, gross_total=amount, net_total=amount, vat_total=1.5, line_count=2
-    )
-    sheets = run(monkeypatch, [row], [row])
-
-    for tab in written(sheets):
-        cells = tab[1]
-        assert cells[COLUMNS.index("gross_total")] == text
-        assert cells[COLUMNS.index("net_total")] == text
-        assert cells[COLUMNS.index("vat_total")] == 1.5
-        assert cells[COLUMNS.index("line_count")] == 2
-    body = sheets.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs[
-        "body"
-    ]
-    json.dumps(body, allow_nan=False)
-    json.dumps(tabs(sheets), allow_nan=False)
-
-
-def test_non_finite_amounts_keep_their_money_format(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    sheets = run(monkeypatch, [make_row(tmp_path, gross_total=float("nan"))], [])
-
-    cells = tabs(sheets)[0]["data"][0]["rowData"][1]["values"]
-    assert cells[COLUMNS.index("gross_total")]["userEnteredFormat"]["numberFormat"] == {
-        "type": "NUMBER",
-        "pattern": "#,##0.00",
-    }
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_amounts_never_reach_a_row(tmp_path: Path, bad: float) -> None:
+    with pytest.raises(ValidationError):
+        ResultRow(file="a.pdf", pdf_path=tmp_path / "a.pdf", gross_total=bad)
 
 
 def test_none_amounts_are_empty_cells_and_zero_stays_a_number(

@@ -1,11 +1,13 @@
 import os
+from datetime import date, datetime
 from pathlib import Path
 
-from openpyxl import Workbook
+from loguru import logger
+from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from invoice_pdf_to_sheet.schema import COLUMNS, ResultRow
+from invoice_pdf_to_sheet.schema import COLUMNS, SEPARATOR, ResultRow
 
 WIDTHS = {
     "file": 30,
@@ -69,3 +71,71 @@ def write_xlsx(ready: list[ResultRow], review: list[ResultRow], path: Path) -> N
         sheet.freeze_panes = "B2"
         sheet.auto_filter.ref = sheet.dimensions
     book.save(path)
+
+
+# a hand-edited cell may hold a number or a typed date where the row model wants text
+TEXT = {
+    "file",
+    "supplier_name",
+    "supplier_vat_id",
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "currency",
+    "evidence",
+    "reasons",
+}
+
+
+def inside(pdf_dir: Path, name: str) -> Path:
+    """The PDF for a file name taken from a (maybe hand-edited) xlsx: a plain name inside pdf_dir, else pdf_dir itself,
+    which is not a file, so nothing outside the folder is ever uploaded."""
+    candidate = pdf_dir / name
+    if Path(name).name != name or "\\" in name or not name.lower().endswith(".pdf"):
+        logger.warning("xlsx row with an unsafe file name: not uploaded")
+        return pdf_dir
+    if not candidate.resolve().is_relative_to(pdf_dir.resolve()):
+        logger.warning("xlsx row pointing outside the PDF folder: not uploaded")
+        return pdf_dir
+    return candidate
+
+
+def read_xlsx(path: Path, pdf_dir: Path) -> tuple[list[ResultRow], list[ResultRow]]:
+    """Rows of the Ready and Needs review tabs of an xlsx written by write_xlsx, each pointing at its PDF in pdf_dir."""
+    book = load_workbook(path)
+    tabs = []
+    for name in ("Ready", "Needs review"):
+        rows = [
+            [
+                v.date().isoformat()
+                if isinstance(v, datetime)
+                else v.isoformat()
+                if isinstance(v, date)
+                else str(v)
+                if column in TEXT and v is not None
+                else v
+                for column, v in zip(COLUMNS, cells, strict=False)
+            ]
+            for cells in book[name].iter_rows(values_only=True)
+            if any(v is not None for v in cells[: len(COLUMNS) - 1])
+        ]
+        tabs.append(
+            [
+                ResultRow.model_validate(
+                    {
+                        **{
+                            k: v
+                            for k, v in zip(COLUMNS[:-1], cells, strict=False)
+                            if v is not None
+                        },
+                        "evidence": cells[COLUMNS.index("evidence")] or "",
+                        "reasons": str(cells[COLUMNS.index("reasons")]).split(SEPARATOR)
+                        if cells[COLUMNS.index("reasons")]
+                        else [],
+                        "pdf_path": inside(pdf_dir, str(cells[0])),
+                    }
+                )
+                for cells in rows[1:]
+            ]
+        )
+    return tabs[0], tabs[1]
