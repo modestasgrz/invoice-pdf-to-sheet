@@ -118,13 +118,28 @@ def test_link_label_keeps_quotes_raw_and_cells_are_neutralized(
     assert "HYPERLINK" not in str(body)
     assert body["data"][0]["values"] == [review[0]]
     create_body = sheets.spreadsheets.return_value.create.call_args.kwargs["body"]
-    cell = create_body["sheets"][1]["data"][0]["rowData"][1]["values"][-1]
-    assert cell == {
-        "userEnteredValue": {"stringValue": 'a"b.pdf'},
-        "userEnteredFormat": {
-            "textFormat": {"link": {"uri": "https://drive.example/x"}}
-        },
-    }
+    assert len(create_body["sheets"][1]["data"][0]["rowData"][1]["values"]) == 15
+    requests = sheets.spreadsheets.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ]
+    assert len(requests) == 1
+    update = requests[0]["updateCells"]
+    assert update["range"]["sheetId"] == 1
+    assert update["rows"] == [
+        {
+            "values": [
+                {
+                    "userEnteredValue": {"stringValue": 'a"b.pdf'},
+                    "textFormatRuns": [
+                        {
+                            "startIndex": 0,
+                            "format": {"link": {"uri": "https://drive.example/x"}},
+                        }
+                    ],
+                }
+            ]
+        }
+    ]
 
 
 def test_coercible_text_is_kept_as_typed() -> None:
@@ -181,6 +196,10 @@ def test_symlinked_pdf_is_not_uploaded(
         "body"
     ]
     assert len(body["data"][1]["values"][1]) == len(COLUMNS) - 1
-    create_body = sheets.spreadsheets.return_value.create.call_args.kwargs["body"]
-    cell = create_body["sheets"][1]["data"][0]["rowData"][1]["values"][-1]
-    assert cell == {"userEnteredValue": {"stringValue": "(not uploaded)"}}
+    requests = sheets.spreadsheets.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ]
+    assert [r["updateCells"]["range"]["sheetId"] for r in requests] == [1]
+    assert requests[0]["updateCells"]["rows"] == [
+        {"values": [{"userEnteredValue": {"stringValue": "(not uploaded)"}}]}
+    ]

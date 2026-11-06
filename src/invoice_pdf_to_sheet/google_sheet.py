@@ -130,9 +130,7 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
     def tab(
         sheet_id: int, name: str, fill: dict[str, float], rows: list[ResultRow]
     ) -> dict[str, Any]:
-        """A tab formatted like the xlsx: coloured bold header, frozen header and file column, filter, widths, formats.
-        The pdf_link cell is set here as plain text with a link (no formula: =HYPERLINK's argument separator depends on
-        the Sheet's locale and shows #ERROR! where it is ';')."""
+        """A tab formatted like the xlsx: coloured bold header, frozen header and file column, filter, widths, formats."""
         cell_formats = [
             {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.00"}}
             if column in MONEY
@@ -175,26 +173,8 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
                     "rowData": [
                         {"values": [{"userEnteredFormat": header} for _ in COLUMNS]},
                         *(
-                            {
-                                "values": [
-                                    *({"userEnteredFormat": f} for f in cell_formats),
-                                    {
-                                        "userEnteredValue": {"stringValue": row.file},
-                                        "userEnteredFormat": {
-                                            "textFormat": {
-                                                "link": {"uri": links[row.file]}
-                                            }
-                                        },
-                                    }
-                                    if row.file in links
-                                    else {
-                                        "userEnteredValue": {
-                                            "stringValue": "(not uploaded)"
-                                        }
-                                    },
-                                ]
-                            }
-                            for row in rows
+                            {"values": [{"userEnteredFormat": f} for f in cell_formats]}
+                            for _ in rows
                         ),
                     ],
                 }
@@ -256,5 +236,54 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
             ],
         },
     ).execute()
-    url: str = spreadsheet["spreadsheetUrl"]
-    return url
+    # The link column goes last, as plain text with a link run: =HYPERLINK's argument separator depends on the Sheet's
+    # locale (#ERROR! where it is ';'), and a cell-level textFormat.link in the create body is dropped by the live API.
+    link = COLUMNS.index("pdf_link")
+    if not ready and not review:
+        return str(spreadsheet["spreadsheetUrl"])
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet["spreadsheetId"],
+        body={
+            "requests": [
+                {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 1,
+                            "endRowIndex": len(rows) + 1,
+                            "startColumnIndex": link,
+                            "endColumnIndex": link + 1,
+                        },
+                        "rows": [
+                            {
+                                "values": [
+                                    {
+                                        "userEnteredValue": {"stringValue": row.file},
+                                        "textFormatRuns": [
+                                            {
+                                                "startIndex": 0,
+                                                "format": {
+                                                    "link": {"uri": links[row.file]}
+                                                },
+                                            }
+                                        ],
+                                    }
+                                    if row.file in links
+                                    else {
+                                        "userEnteredValue": {
+                                            "stringValue": "(not uploaded)"
+                                        }
+                                    }
+                                ]
+                            }
+                            for row in rows
+                        ],
+                        "fields": "userEnteredValue,textFormatRuns",
+                    }
+                }
+                for sheet_id, rows in ((0, ready), (1, review))
+                if rows
+            ]
+        },
+    ).execute()
+    return str(spreadsheet["spreadsheetUrl"])

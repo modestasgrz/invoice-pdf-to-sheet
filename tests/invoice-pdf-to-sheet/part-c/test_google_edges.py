@@ -69,6 +69,20 @@ class FakeDrive:
         return Call({"id": kwargs["fileId"]})
 
 
+class FakeValues:
+    """spreadsheets().values(): its batchUpdate is recorded apart from spreadsheets().batchUpdate."""
+
+    def __init__(self, sheets: "FakeSheets") -> None:
+        self.sheets = sheets
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"unexpected Sheets values call: {name}")
+
+    def batchUpdate(self, **kwargs: Any) -> Call:
+        self.sheets.events.append(("values.batchUpdate", kwargs))
+        return Call({})
+
+
 class FakeSheets:
     def __init__(self) -> None:
         self.events: list[tuple[str, dict[str, Any]]] = []
@@ -79,8 +93,8 @@ class FakeSheets:
     def spreadsheets(self) -> "FakeSheets":
         return self
 
-    def values(self) -> "FakeSheets":
-        return self
+    def values(self) -> FakeValues:
+        return FakeValues(self)
 
     def create(self, **kwargs: Any) -> Call:
         self.events.append(("create", kwargs))
@@ -121,18 +135,55 @@ def make_row(tmp_path: Path, name: str, **fields: Any) -> ResultRow:
 
 
 def sheet_data(services: Services) -> dict[str, list[list[Any]]]:
-    batches = [kw for kind, kw in services.sheets.events if kind == "batchUpdate"]
+    batches = [
+        kw for kind, kw in services.sheets.events if kind == "values.batchUpdate"
+    ]
     assert len(batches) == 1
     assert batches[0]["body"]["valueInputOption"] == "USER_ENTERED"
     return {d["range"]: d["values"] for d in batches[0]["body"]["data"]}
 
 
+def link_requests(services: Services) -> list[dict[str, Any]]:
+    """The updateCells requests of the one spreadsheets().batchUpdate call (none when that call was never made)."""
+    batches = [kw for kind, kw in services.sheets.events if kind == "batchUpdate"]
+    if not batches:
+        return []
+    assert len(batches) == 1
+    assert set(batches[0]) == {"spreadsheetId", "body"}
+    assert batches[0]["spreadsheetId"] == "S1"
+    assert set(batches[0]["body"]) == {"requests"}
+    requests: list[dict[str, Any]] = batches[0]["body"]["requests"]
+    assert all(set(r) == {"updateCells"} for r in requests)
+    return [r["updateCells"] for r in requests]
+
+
 def link_cells(services: Services, tab: int) -> list[dict[str, Any]]:
-    creates = [kw for kind, kw in services.sheets.events if kind == "create"]
-    assert len(creates) == 1
-    rows = creates[0]["body"]["sheets"][tab]["data"][0]["rowData"][1:]
-    cells: list[dict[str, Any]] = [r["values"][COLUMNS.index("pdf_link")] for r in rows]
+    """The pdf_link cells sent for one tab (0 Ready, 1 Needs review), with the range they are written to checked."""
+    found = [r for r in link_requests(services) if r["range"]["sheetId"] == tab]
+    if not found:
+        return []
+    assert len(found) == 1
+    request = found[0]
+    link = COLUMNS.index("pdf_link")
+    rows = request["rows"]
+    assert request["fields"] == "userEnteredValue,textFormatRuns"
+    assert request["range"] == {
+        "sheetId": tab,
+        "startRowIndex": 1,
+        "endRowIndex": len(rows) + 1,
+        "startColumnIndex": link,
+        "endColumnIndex": link + 1,
+    }
+    assert all(len(r["values"]) == 1 for r in rows)
+    cells: list[dict[str, Any]] = [r["values"][0] for r in rows]
     return cells
+
+
+def linked(name: str, uri: str) -> dict[str, Any]:
+    return {
+        "userEnteredValue": {"stringValue": name},
+        "textFormatRuns": [{"startIndex": 0, "format": {"link": {"uri": uri}}}],
+    }
 
 
 # ---------- scopes and credential loading ----------
@@ -384,7 +435,11 @@ def test_spreadsheet_is_moved_into_folder_after_creation(
         s["properties"]["title"] for s in services.sheets.events[0][1]["body"]["sheets"]
     ]
     assert titles == ["Ready", "Needs review"]
-    assert [k for k, _ in services.sheets.events] == ["create", "batchUpdate"]
+    assert [k for k, _ in services.sheets.events] == [
+        "create",
+        "values.batchUpdate",
+        "batchUpdate",
+    ]
 
 
 def test_no_sharing_or_permission_calls_ever(
@@ -397,7 +452,11 @@ def test_no_sharing_or_permission_calls_ever(
 
     # the fakes raise on any attribute other than files()/spreadsheets()/values(); also no sharing arguments
     assert {k for k, _ in services.drive.events} == {"create", "update"}
-    assert {k for k, _ in services.sheets.events} == {"create", "batchUpdate"}
+    assert {k for k, _ in services.sheets.events} == {
+        "create",
+        "values.batchUpdate",
+        "batchUpdate",
+    }
     flat = repr(services.drive.events) + repr(services.sheets.events)
     for word in ("permission", "emailAddress", "anyone", "role", "transferOwnership"):
         assert word not in flat
@@ -465,22 +524,13 @@ def test_values_have_header_rows_in_order_and_numbers_stay_numbers(
         and only["line_count"] == ""
     )
     assert link_cells(services, 0) == [
-        {
-            "userEnteredValue": {"stringValue": name},
-            "userEnteredFormat": {
-                "textFormat": {"link": {"uri": f"https://drive.example/{name}"}}
-            },
-        }
-        for name in ("z.pdf", "a.pdf")
+        linked(name, f"https://drive.example/{name}") for name in ("z.pdf", "a.pdf")
     ]
-    assert link_cells(services, 1) == [
-        {
-            "userEnteredValue": {"stringValue": "m.pdf"},
-            "userEnteredFormat": {
-                "textFormat": {"link": {"uri": "https://drive.example/m.pdf"}}
-            },
-        }
-    ]
+    assert link_cells(services, 1) == [linked("m.pdf", "https://drive.example/m.pdf")]
+    create = next(kw for kind, kw in services.sheets.events if kind == "create")
+    for tab in create["body"]["sheets"]:
+        for row in tab["data"][0]["rowData"][1:]:
+            assert len(row["values"]) == len(COLUMNS) - 1
 
 
 def test_empty_ready_and_empty_review_each_get_only_a_header(
@@ -491,12 +541,14 @@ def test_empty_ready_and_empty_review_each_get_only_a_header(
     data = sheet_data(services)
     assert data["'Ready'!A1"] == [COLUMNS]
     assert len(data["'Needs review'!A1"]) == 2
+    assert [r["range"]["sheetId"] for r in link_requests(services)] == [1]
 
     services = install(monkeypatch)
     google_sheet.publish([make_row(tmp_path, "a.pdf")], [])
     data = sheet_data(services)
     assert data["'Needs review'!A1"] == [COLUMNS]
     assert len(data["'Ready'!A1"]) == 2
+    assert [r["range"]["sheetId"] for r in link_requests(services)] == [0]
 
 
 def test_both_lists_empty_creates_folder_and_sheet_but_uploads_nothing(
@@ -511,6 +563,7 @@ def test_both_lists_empty_creates_folder_and_sheet_but_uploads_nothing(
     services.media.assert_not_called()
     data = sheet_data(services)
     assert data == {"'Ready'!A1": [COLUMNS], "'Needs review'!A1": [COLUMNS]}
+    assert "batchUpdate" not in [k for k, _ in services.sheets.events]
 
 
 def test_formula_like_file_name_is_text_in_file_cell_but_raw_in_link_cell(
@@ -527,13 +580,9 @@ def test_formula_like_file_name_is_text_in_file_cell_but_raw_in_link_cell(
     assert cells["reasons"] == "'@boom"
     assert cells["supplier_name"] == "'-x"
     assert link_cells(services, 1) == [
-        {
-            "userEnteredValue": {"stringValue": "=1+1.pdf"},
-            "userEnteredFormat": {
-                "textFormat": {"link": {"uri": "https://drive.example/=1+1.pdf"}}
-            },
-        }
+        linked("=1+1.pdf", "https://drive.example/=1+1.pdf")
     ]
+    assert link_cells(services, 0) == []
 
 
 def test_http_error_mid_upload_propagates_and_nothing_after_it_runs(
@@ -667,3 +716,4 @@ def test_cli_success_prints_url_and_publishes_split_lists(
     assert "Google Sheet: https://sheet.example/S1" in captured.out.splitlines()
     data = sheet_data(services)
     assert len(data["'Ready'!A1"]) + len(data["'Needs review'!A1"]) == 3
+    assert len(link_cells(services, 0)) + len(link_cells(services, 1)) == 1

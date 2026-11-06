@@ -10,7 +10,8 @@ from loguru import logger
 from invoice_pdf_to_sheet import extract
 from invoice_pdf_to_sheet.checks import mark_duplicates
 from invoice_pdf_to_sheet.evaluate import evaluate
-from invoice_pdf_to_sheet.xlsx import write_xlsx
+from invoice_pdf_to_sheet.schema import ResultRow
+from invoice_pdf_to_sheet.xlsx import read_xlsx, write_xlsx
 
 
 def run(input_dir: Path, xlsx: Path, google: bool, workers: int) -> int:
@@ -35,8 +36,10 @@ def run(input_dir: Path, xlsx: Path, google: bool, workers: int) -> int:
     logger.info("run end: {} ready, {} review", len(ready), len(review))
     print(f"{len(rows)} invoices: {len(ready)} ready, {len(review)} needs review")
     print(f"xlsx: {xlsx}")
-    if not google:
-        return 0
+    return to_google(ready, review) if google else 0
+
+
+def to_google(ready: list[ResultRow], review: list[ResultRow]) -> int:
     google_sheet = importlib.import_module("invoice_pdf_to_sheet.google_sheet")
     try:
         url = google_sheet.publish(ready, review)
@@ -57,10 +60,25 @@ def main(argv: list[str] | None = None) -> int:
     run_cmd.add_argument("--xlsx", type=Path, required=True)
     run_cmd.add_argument("--google", action="store_true")
     run_cmd.add_argument("--workers", type=int, default=4, choices=range(1, 5))
+    publish_cmd = commands.add_parser(
+        "publish", help="send an existing xlsx to a new Google Sheet (no model call)"
+    )
+    publish_cmd.add_argument("--xlsx", type=Path, required=True)
+    publish_cmd.add_argument("--input", type=Path, required=True)
     eval_cmd = commands.add_parser("eval", help="score an xlsx against the answer key")
     eval_cmd.add_argument("--xlsx", type=Path, required=True)
     eval_cmd.add_argument("--key", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == "publish":
+        if not args.xlsx.is_file():
+            print(f"no xlsx at {args.xlsx}", file=sys.stderr)
+            return 2
+        try:
+            ready, review = read_xlsx(args.xlsx, args.input)
+        except Exception as error:
+            print(f"cannot read {args.xlsx}: {type(error).__name__}", file=sys.stderr)
+            return 2
+        return to_google(ready, review)
     if args.command == "eval":
         print("\n".join(evaluate(args.xlsx, args.key)))
         return 0

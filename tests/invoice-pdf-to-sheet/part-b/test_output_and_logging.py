@@ -8,9 +8,9 @@ import httpx2
 import pytest
 from loguru import logger
 from openpyxl import load_workbook
+from pydantic import ValidationError
 from reportlab.pdfgen import canvas
 
-from invoice_pdf_to_sheet.checks import check_fields
 from invoice_pdf_to_sheet.cli import main
 from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
 from invoice_pdf_to_sheet.xlsx import write_xlsx
@@ -221,6 +221,6 @@ def test_hyperlink_survives_spaces_and_unicode_in_file_names(
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
-def test_non_finite_totals_are_flagged_not_waved_through(bad: float) -> None:
-    fields = InvoiceFields.model_validate({**BASE, "net_total": bad, "evidence": []})
-    assert check_fields(fields) != []
+def test_non_finite_totals_are_rejected_as_model_output(bad: float) -> None:
+    with pytest.raises(ValidationError):
+        InvoiceFields.model_validate({**BASE, "net_total": bad, "evidence": []})

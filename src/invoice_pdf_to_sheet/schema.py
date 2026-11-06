@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, ConfigDict
 
 COLUMNS = [
     "file",
@@ -40,6 +40,8 @@ Text = Annotated[str, AfterValidator(clean)]
 
 
 class LineItem(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     description: Text
     quantity: float
     unit_price: float
@@ -53,6 +55,8 @@ class FieldQuote(BaseModel):
 
 
 class InvoiceFields(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     supplier_name: Text
     supplier_vat_id: Text | None
     invoice_number: Text
@@ -67,6 +71,8 @@ class InvoiceFields(BaseModel):
 
 
 class ResultRow(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     file: str
     supplier_name: str | None = None
     supplier_vat_id: str | None = None
