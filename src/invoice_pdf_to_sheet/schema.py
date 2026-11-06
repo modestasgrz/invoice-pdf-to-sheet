@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from pydantic import AfterValidator, BaseModel
 
 COLUMNS = [
     "file",
@@ -23,26 +24,41 @@ COLUMNS = [
 ]
 
 
+# "; " joins reasons and evidence quotes in one cell. Inside a value (raw VAT id, date, file name, quote) it is written
+# with a no-break space, which looks the same but can't be split on, so printed text can't forge an extra entry.
+SEPARATOR = "; "
+SAFE = ";\u00a0"
+
+
+def clean(text: str) -> str:
+    """Every value read from a PDF or a file name passes here: drop characters a spreadsheet can't hold first (so
+    removing them can't glue a separator back together), then neutralise the separator."""
+    return str(ILLEGAL_CHARACTERS_RE.sub("", text)).replace(SEPARATOR, SAFE)
+
+
+Text = Annotated[str, AfterValidator(clean)]
+
+
 class LineItem(BaseModel):
-    description: str
+    description: Text
     quantity: float
     unit_price: float
     line_total: float
 
 
 class FieldQuote(BaseModel):
-    field: str
+    field: Text
     page: int
-    quote: str
+    quote: Text
 
 
 class InvoiceFields(BaseModel):
-    supplier_name: str
-    supplier_vat_id: str | None
-    invoice_number: str
-    invoice_date: str
-    due_date: str | None
-    currency: str
+    supplier_name: Text
+    supplier_vat_id: Text | None
+    invoice_number: Text
+    invoice_date: Text
+    due_date: Text | None
+    currency: Text
     net_total: float
     vat_total: float
     gross_total: float
@@ -71,5 +87,5 @@ class ResultRow(BaseModel):
     def cells(self) -> list[str | float | int | None]:
         """Row values in COLUMNS order, without pdf_link (each writer renders its own link)."""
         values = self.model_dump()
-        values["reasons"] = "; ".join(self.reasons)
+        values["reasons"] = SEPARATOR.join(clean(r) for r in self.reasons)
         return [values[column] for column in COLUMNS[:-1]]
