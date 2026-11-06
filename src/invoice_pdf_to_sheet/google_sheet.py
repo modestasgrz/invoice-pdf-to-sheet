@@ -13,9 +13,12 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 from invoice_pdf_to_sheet.schema import COLUMNS, ResultRow
+from invoice_pdf_to_sheet.xlsx import MONEY, WIDTHS
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 FOLDER = "application/vnd.google-apps.folder"
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+DATES = {"invoice_date", "due_date"}
 COERCIBLE = re.compile(r"[\d\s.,/:%$€()-]+|true|false", re.IGNORECASE)
 # google-auth ships no type hints; going through Any keeps mypy strict elsewhere
 UntypedCredentials: Any = Credentials
@@ -110,14 +113,78 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
         )
         links[row.file] = uploaded["webViewLink"]
 
+    def tab(
+        sheet_id: int, name: str, fill: dict[str, float], rows: int
+    ) -> dict[str, Any]:
+        """A tab formatted like the xlsx: coloured bold header, frozen header and file column, filter, widths, formats."""
+        cell_formats = [
+            {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.00"}}
+            if column in MONEY
+            else {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}
+            if column in DATES
+            else {"wrapStrategy": "WRAP", "verticalAlignment": "TOP"}
+            if column in ("evidence", "reasons")
+            else {}
+            for column in COLUMNS
+        ]
+        header = {
+            "textFormat": {
+                "bold": True,
+                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+            },
+            "backgroundColor": fill,
+        }
+        return {
+            "properties": {
+                "sheetId": sheet_id,
+                "title": name,
+                "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 1},
+            },
+            "basicFilter": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": rows + 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": len(COLUMNS),
+                }
+            },
+            "data": [
+                {
+                    "startRow": 0,
+                    "startColumn": 0,
+                    "columnMetadata": [
+                        {"pixelSize": WIDTHS[c] * 7 + 10} for c in COLUMNS
+                    ],
+                    "rowData": [
+                        {"values": [{"userEnteredFormat": header} for _ in COLUMNS]},
+                        *(
+                            {"values": [{"userEnteredFormat": f} for f in cell_formats]}
+                            for _ in range(rows)
+                        ),
+                    ],
+                }
+            ],
+        }
+
     spreadsheet = (
         sheets.spreadsheets()
         .create(
             body={
                 "properties": {"title": title},
                 "sheets": [
-                    {"properties": {"title": "Ready"}},
-                    {"properties": {"title": "Needs review"}},
+                    tab(
+                        0,
+                        "Ready",
+                        {"red": 0.12, "green": 0.16, "blue": 0.22},
+                        len(ready),
+                    ),
+                    tab(
+                        1,
+                        "Needs review",
+                        {"red": 0.71, "green": 0.33, "blue": 0.04},
+                        len(review),
+                    ),
                 ],
             },
             fields="spreadsheetId,spreadsheetUrl",
@@ -136,7 +203,14 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
             list(COLUMNS),
             *(
                 [
-                    *map(as_text, row.cells()),
+                    *(
+                        value
+                        if column in DATES
+                        and isinstance(value, str)
+                        and ISO_DATE.fullmatch(value)
+                        else as_text(value)
+                        for column, value in zip(COLUMNS, row.cells(), strict=False)
+                    ),
                     f'=HYPERLINK("{links[row.file]}", "{row.file.replace('"', '""')}")'
                     if row.file in links
                     else "(not uploaded)",
