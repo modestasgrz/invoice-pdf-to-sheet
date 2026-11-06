@@ -376,7 +376,7 @@ def test_ready_and_review_tabs_get_different_header_fills(
 
     fills = [
         tab["data"][0]["rowData"][0]["values"][0]["userEnteredFormat"][
-            "backgroundColor"
+            "backgroundColorStyle"
         ]
         for tab in tabs(sheets)
     ]

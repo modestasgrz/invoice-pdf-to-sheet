@@ -447,7 +447,7 @@ def test_values_have_header_rows_in_order_and_numbers_stay_numbers(
     assert second["line_count"] == 0
     assert all(len(r) == len(COLUMNS) for r in [*ready_values, *review_values])
     only = dict(zip(COLUMNS, review_values[1], strict=True))
-    assert only["reasons"] == "lines sum 1 != net 2; missing supplier VAT id"
+    assert only["reasons"] == "'lines sum 1 != net 2; missing supplier VAT id"
     assert (
         only["supplier_name"] == ""
         and only["net_total"] == ""

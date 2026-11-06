@@ -1,7 +1,7 @@
 import math
 import os
 import re
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -17,9 +17,8 @@ from invoice_pdf_to_sheet.xlsx import MONEY, WIDTHS
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 FOLDER = "application/vnd.google-apps.folder"
-ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 DATES = {"invoice_date", "due_date"}
-COERCIBLE = re.compile(r"[\d\s.,/:%$€()-]+|true|false", re.IGNORECASE)
 # google-auth ships no type hints; going through Any keeps mypy strict elsewhere
 UntypedCredentials: Any = Credentials
 
@@ -67,18 +66,33 @@ def load_credentials() -> Credentials:
 
 
 def as_text(value: str | float | None) -> str | float | int:
-    """Under USER_ENTERED, Sheets would turn text into formulas, numbers or dates; a leading apostrophe keeps it as typed.
-    Non-finite numbers aren't valid JSON, so they go as text too."""
+    """Under USER_ENTERED, Sheets turns text into formulas, error values, booleans, numbers, dates or times (locale
+    dependent, e.g. "Oct 1, 2026"); a leading apostrophe (not shown in the cell) keeps such text exactly as typed. Text
+    with no digit, no boolean word and no formula/error start can't be coerced and goes as is. Non-finite numbers aren't
+    valid JSON, so they go as text too."""
     if value is None:
         return ""
     if isinstance(value, str):
-        coercible = value.startswith(("=", "+", "-", "@")) or COERCIBLE.fullmatch(
-            value.strip()
+        coercible = (
+            value.lstrip().startswith(("=", "+", "-", "@", "#"))
+            or any(c.isdigit() for c in value)
+            or value.strip().casefold() in ("true", "false")
         )
         return "'" + value if coercible else value
     if not math.isfinite(value):
         return str(value)
     return value
+
+
+def real_date(value: str | float | None) -> bool:
+    """A real calendar date in plain ISO form goes to Sheets unprefixed so it becomes a date cell."""
+    if not isinstance(value, str) or not ISO_DATE.fullmatch(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
@@ -130,9 +144,9 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
         header = {
             "textFormat": {
                 "bold": True,
-                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                "foregroundColorStyle": {"rgbColor": {"red": 1, "green": 1, "blue": 1}},
             },
-            "backgroundColor": fill,
+            "backgroundColorStyle": {"rgbColor": fill},
         }
         return {
             "properties": {
@@ -204,12 +218,10 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
             *(
                 [
                     *(
-                        value
-                        if column in DATES
-                        and isinstance(value, str)
-                        and ISO_DATE.fullmatch(value)
+                        str(value)
+                        if column in DATES and real_date(value)
                         else as_text(value)
-                        for column, value in zip(COLUMNS, row.cells(), strict=False)
+                        for column, value in zip(COLUMNS[:-1], row.cells(), strict=True)
                     ),
                     f'=HYPERLINK("{links[row.file]}", "{row.file.replace('"', '""')}")'
                     if row.file in links

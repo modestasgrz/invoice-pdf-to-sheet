@@ -77,7 +77,7 @@ def test_tabs_get_header_style_frozen_rows_filter_and_widths(
         assert widths[COLUMNS.index("supplier_name")] >= 220
         header = grid["rowData"][0]["values"]
         assert all(c["userEnteredFormat"]["textFormat"]["bold"] for c in header)
-        assert all("backgroundColor" in c["userEnteredFormat"] for c in header)
+        assert all("backgroundColorStyle" in c["userEnteredFormat"] for c in header)
         assert len(grid["rowData"]) == rows + 1
     assert tabs[0]["properties"]["sheetId"] != tabs[1]["properties"]["sheetId"]
 
@@ -144,10 +144,18 @@ def test_formula_in_a_date_field_is_still_neutralised(
     )
 
 
-def test_columns_match_the_xlsx_order(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "2026-13-45",
+        "2026-02-30",
+        "\uff12\uff10\uff12\uff16-10-01",
+        "2026-10-01T00:00:00",
+    ],
+)
+def test_date_shaped_but_not_real_dates_stay_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: str
 ) -> None:
-    sheets = publish(tmp_path, monkeypatch, ready=1, review=0)
+    sheets = publish(tmp_path, monkeypatch, ready=1, review=0, invoice_date=raw)
 
-    assert written(sheets)[0] == COLUMNS
-    assert written(sheets)[0][0] == "file"
+    assert written(sheets)[1][COLUMNS.index("invoice_date")] == "'" + raw

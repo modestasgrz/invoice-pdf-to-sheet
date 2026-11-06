@@ -18,7 +18,11 @@ def test_as_text_neutralizes_formula_starts() -> None:
     assert google_sheet.as_text("@x") == "'@x"
     assert google_sheet.as_text(None) == ""
     assert google_sheet.as_text(-5.0) == -5.0
-    assert google_sheet.as_text("VR-1") == "VR-1"
+    assert google_sheet.as_text("VR-1") == "'VR-1"
+    assert google_sheet.as_text("Verdant Ridge BV") == "Verdant Ridge BV"
+    assert google_sheet.as_text("#N/A") == "'#N/A"
+    assert google_sheet.as_text("Oct 1, 2026") == "'Oct 1, 2026"
+    assert google_sheet.as_text(" false ") == "' false "
     assert google_sheet.as_text("-5") == "'-5"
 
 
