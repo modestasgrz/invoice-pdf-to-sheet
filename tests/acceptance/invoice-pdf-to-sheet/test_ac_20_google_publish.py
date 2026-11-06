@@ -1,8 +1,8 @@
 """AC-20: Given mocked Drive and Sheets services, when google_sheet.publish(ready, review) runs with 2 Ready rows and 1 review
 row, then exactly 1 folder 'invoice-pdf-to-sheet <run timestamp>' is created, each of the 3 PDFs is uploaded into it as
 application/pdf, exactly 1 spreadsheet is created with sheets Ready and Needs review holding the DEC-07 header plus 2 and 1
-rows, each pdf_link cell is the plain file name linked via textFormat.link.uri to its webViewLink (no formula: no written
-value starts with '='), and the spreadsheet URL is returned."""
+rows, each pdf_link cell is written afterwards by updateCells as the plain file name with a textFormatRun at 0 linking
+to its webViewLink (no formula: no written value starts with '='), and the spreadsheet URL is returned."""
 
 import importlib
 import re
@@ -147,24 +147,44 @@ def test_ac_20_google_publish(
     assert len(sheets.created) == 1
     titles = [s["properties"]["title"] for s in sheets.created[0]["body"]["sheets"]]
     assert titles == ["Ready", "Needs review"]
-    data = {d["range"]: d["values"] for b in sheets.batches for d in b["body"]["data"]}
+    value_batches = [b for b in sheets.batches if "data" in b["body"]]
+    data = {d["range"]: d["values"] for b in value_batches for d in b["body"]["data"]}
     ready_values, review_values = data["'Ready'!A1"], data["'Needs review'!A1"]
     assert ready_values[0] == COLUMNS
     assert review_values[0] == COLUMNS
     assert len(ready_values) == 3
     assert len(review_values) == 2
-    for b in sheets.batches:
+    for b in value_batches:
         for d in b["body"]["data"]:
             for r in d["values"]:
                 assert not any(str(v).startswith("=") for v in r)
-    link = COLUMNS.index("pdf_link")
+
+    [links] = [b for b in sheets.batches if "requests" in b["body"]]
+    assert links["spreadsheetId"] == "S1"
+    requests = [r["updateCells"] for r in links["body"]["requests"]]
     tabs = sheets.created[0]["body"]["sheets"]
-    for tab, values in zip(tabs, (ready_values[1:], review_values[1:]), strict=True):
-        cells = [row["values"][link] for row in tab["data"][0]["rowData"][1:]]
-        assert len(cells) == len(values)
+    ids = [t["properties"]["sheetId"] for t in tabs]
+    link = COLUMNS.index("pdf_link")
+    assert len(requests) == 2
+    for request, sheet_id, values in zip(
+        requests, ids, (ready_values[1:], review_values[1:]), strict=True
+    ):
+        assert request["fields"] == "userEnteredValue,textFormatRuns"
+        assert request["range"] == {
+            "sheetId": sheet_id,
+            "startRowIndex": 1,
+            "endRowIndex": len(values) + 1,
+            "startColumnIndex": link,
+            "endColumnIndex": link + 1,
+        }
+        cells = [row["values"][0] for row in request["rows"]]
         for cell, r in zip(cells, values, strict=True):
-            assert cell["userEnteredValue"] == {"stringValue": r[0]}
-            assert (
-                cell["userEnteredFormat"]["textFormat"]["link"]["uri"]
-                == f"https://drive.example/{r[0]}"
-            )
+            assert cell == {
+                "userEnteredValue": {"stringValue": r[0]},
+                "textFormatRuns": [
+                    {
+                        "startIndex": 0,
+                        "format": {"link": {"uri": f"https://drive.example/{r[0]}"}},
+                    }
+                ],
+            }
