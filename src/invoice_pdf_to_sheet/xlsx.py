@@ -117,7 +117,7 @@ def read_xlsx(path: Path, pdf_dir: Path) -> tuple[list[ResultRow], list[ResultRo
                 for column, v in zip(COLUMNS, cells, strict=False)
             ]
             for cells in book[name].iter_rows(values_only=True)
-            if any(v is not None for v in cells)
+            if any(v is not None for v in cells[: len(COLUMNS) - 1])
         ]
         tabs.append(
             [

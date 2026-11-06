@@ -140,3 +140,26 @@ def test_hand_edited_cells_are_read_as_text(tmp_path: Path) -> None:
     assert row.invoice_date == "2026-10-01"
     assert row.invoice_number == "12345"
     assert review == []
+
+
+def test_cleared_data_row_with_its_link_left_behind_is_skipped(tmp_path: Path) -> None:
+    from openpyxl import load_workbook
+
+    folder = tmp_path / "in"
+    folder.mkdir()
+    out = tmp_path / "out.xlsx"
+    rows = [ResultRow(file=f"{n}.pdf", pdf_path=folder / f"{n}.pdf") for n in (1, 2)]
+    write_xlsx(rows, [], out)
+    book = load_workbook(out)
+    sheet = book["Ready"]
+    for cell in sheet[3]:
+        cell.value = None
+    book.save(out)
+    assert (
+        load_workbook(out)["Ready"].cell(row=3, column=len(COLUMNS)).value is not None
+    )
+
+    ready, review = read_xlsx(out, folder)
+
+    assert [r.file for r in ready] == ["1.pdf"]
+    assert review == []
