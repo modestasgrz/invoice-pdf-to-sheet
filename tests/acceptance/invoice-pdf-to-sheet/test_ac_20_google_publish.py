@@ -1,7 +1,8 @@
 """AC-20: Given mocked Drive and Sheets services, when google_sheet.publish(ready, review) runs with 2 Ready rows and 1 review
 row, then exactly 1 folder 'invoice-pdf-to-sheet <run timestamp>' is created, each of the 3 PDFs is uploaded into it as
 application/pdf, exactly 1 spreadsheet is created with sheets Ready and Needs review holding the DEC-07 header plus 2 and 1
-rows, each pdf_link cell is =HYPERLINK("<webViewLink>", "<file name>"), and the spreadsheet URL is returned."""
+rows, each pdf_link cell is the plain file name linked via textFormat.link.uri to its webViewLink (no formula: no written
+value starts with '='), and the spreadsheet URL is returned."""
 
 import importlib
 import re
@@ -152,7 +153,18 @@ def test_ac_20_google_publish(
     assert review_values[0] == COLUMNS
     assert len(ready_values) == 3
     assert len(review_values) == 2
+    for b in sheets.batches:
+        for d in b["body"]["data"]:
+            for r in d["values"]:
+                assert not any(str(v).startswith("=") for v in r)
     link = COLUMNS.index("pdf_link")
-    for values in (ready_values[1:], review_values[1:]):
-        for r in values:
-            assert r[link] == f'=HYPERLINK("https://drive.example/{r[0]}", "{r[0]}")'
+    tabs = sheets.created[0]["body"]["sheets"]
+    for tab, values in zip(tabs, (ready_values[1:], review_values[1:]), strict=True):
+        cells = [row["values"][link] for row in tab["data"][0]["rowData"][1:]]
+        assert len(cells) == len(values)
+        for cell, r in zip(cells, values, strict=True):
+            assert cell["userEnteredValue"] == {"stringValue": r[0]}
+            assert (
+                cell["userEnteredFormat"]["textFormat"]["link"]["uri"]
+                == f"https://drive.example/{r[0]}"
+            )
