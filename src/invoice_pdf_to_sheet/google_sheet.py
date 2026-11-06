@@ -1,7 +1,7 @@
 import math
 import os
 import re
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -13,10 +13,12 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 from invoice_pdf_to_sheet.schema import COLUMNS, ResultRow
+from invoice_pdf_to_sheet.xlsx import MONEY, WIDTHS
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 FOLDER = "application/vnd.google-apps.folder"
-COERCIBLE = re.compile(r"[\d\s.,/:%$€()-]+|true|false", re.IGNORECASE)
+ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+DATES = {"invoice_date", "due_date"}
 # google-auth ships no type hints; going through Any keeps mypy strict elsewhere
 UntypedCredentials: Any = Credentials
 
@@ -64,18 +66,33 @@ def load_credentials() -> Credentials:
 
 
 def as_text(value: str | float | None) -> str | float | int:
-    """Under USER_ENTERED, Sheets would turn text into formulas, numbers or dates; a leading apostrophe keeps it as typed.
-    Non-finite numbers aren't valid JSON, so they go as text too."""
+    """Under USER_ENTERED, Sheets turns text into formulas, error values, booleans, numbers, dates or times (locale
+    dependent, e.g. "Oct 1, 2026"); a leading apostrophe (not shown in the cell) keeps such text exactly as typed. Text
+    with no digit, no boolean word and no formula/error/apostrophe start can't be coerced and goes as is. Non-finite numbers aren't
+    valid JSON, so they go as text too."""
     if value is None:
         return ""
     if isinstance(value, str):
-        coercible = value.startswith(("=", "+", "-", "@")) or COERCIBLE.fullmatch(
-            value.strip()
+        coercible = (
+            value.lstrip().startswith(("=", "+", "-", "@", "#", "'"))
+            or any(c.isdigit() for c in value)
+            or value.strip().casefold() in ("true", "false")
         )
         return "'" + value if coercible else value
     if not math.isfinite(value):
-        return str(value)
+        return as_text(str(value))
     return value
+
+
+def real_date(value: str | float | None) -> bool:
+    """A real calendar date in plain ISO form goes to Sheets unprefixed so it becomes a date cell."""
+    if not isinstance(value, str) or not ISO_DATE.fullmatch(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
@@ -110,14 +127,98 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
         )
         links[row.file] = uploaded["webViewLink"]
 
+    def tab(
+        sheet_id: int, name: str, fill: dict[str, float], rows: list[ResultRow]
+    ) -> dict[str, Any]:
+        """A tab formatted like the xlsx: coloured bold header, frozen header and file column, filter, widths, formats.
+        The pdf_link cell is set here as plain text with a link (no formula: =HYPERLINK's argument separator depends on
+        the Sheet's locale and shows #ERROR! where it is ';')."""
+        cell_formats = [
+            {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.00"}}
+            if column in MONEY
+            else {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}
+            if column in DATES
+            else {"wrapStrategy": "WRAP", "verticalAlignment": "TOP"}
+            if column in ("evidence", "reasons")
+            else {}
+            for column in COLUMNS[:-1]
+        ]
+        header = {
+            "textFormat": {
+                "bold": True,
+                "foregroundColorStyle": {"rgbColor": {"red": 1, "green": 1, "blue": 1}},
+            },
+            "backgroundColorStyle": {"rgbColor": fill},
+        }
+        return {
+            "properties": {
+                "sheetId": sheet_id,
+                "title": name,
+                "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 1},
+            },
+            "basicFilter": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": len(rows) + 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": len(COLUMNS),
+                }
+            },
+            "data": [
+                {
+                    "startRow": 0,
+                    "startColumn": 0,
+                    "columnMetadata": [
+                        {"pixelSize": WIDTHS[c] * 7 + 10} for c in COLUMNS
+                    ],
+                    "rowData": [
+                        {"values": [{"userEnteredFormat": header} for _ in COLUMNS]},
+                        *(
+                            {
+                                "values": [
+                                    *({"userEnteredFormat": f} for f in cell_formats),
+                                    {
+                                        "userEnteredValue": {"stringValue": row.file},
+                                        "userEnteredFormat": {
+                                            "textFormat": {
+                                                "link": {"uri": links[row.file]}
+                                            }
+                                        },
+                                    }
+                                    if row.file in links
+                                    else {
+                                        "userEnteredValue": {
+                                            "stringValue": "(not uploaded)"
+                                        }
+                                    },
+                                ]
+                            }
+                            for row in rows
+                        ),
+                    ],
+                }
+            ],
+        }
+
     spreadsheet = (
         sheets.spreadsheets()
         .create(
             body={
                 "properties": {"title": title},
                 "sheets": [
-                    {"properties": {"title": "Ready"}},
-                    {"properties": {"title": "Needs review"}},
+                    tab(
+                        0,
+                        "Ready",
+                        {"red": 0.12, "green": 0.16, "blue": 0.22},
+                        ready,
+                    ),
+                    tab(
+                        1,
+                        "Needs review",
+                        {"red": 0.71, "green": 0.33, "blue": 0.04},
+                        review,
+                    ),
                 ],
             },
             fields="spreadsheetId,spreadsheetUrl",
@@ -136,10 +237,10 @@ def publish(ready: list[ResultRow], review: list[ResultRow]) -> str:
             list(COLUMNS),
             *(
                 [
-                    *map(as_text, row.cells()),
-                    f'=HYPERLINK("{links[row.file]}", "{row.file.replace('"', '""')}")'
-                    if row.file in links
-                    else "(not uploaded)",
+                    str(value)
+                    if column in DATES and real_date(value)
+                    else as_text(value)
+                    for column, value in zip(COLUMNS[:-1], row.cells(), strict=True)
                 ]
                 for row in rows
             ),

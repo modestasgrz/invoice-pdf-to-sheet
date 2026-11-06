@@ -127,6 +127,14 @@ def sheet_data(services: Services) -> dict[str, list[list[Any]]]:
     return {d["range"]: d["values"] for d in batches[0]["body"]["data"]}
 
 
+def link_cells(services: Services, tab: int) -> list[dict[str, Any]]:
+    creates = [kw for kind, kw in services.sheets.events if kind == "create"]
+    assert len(creates) == 1
+    rows = creates[0]["body"]["sheets"][tab]["data"][0]["rowData"][1:]
+    cells: list[dict[str, Any]] = [r["values"][COLUMNS.index("pdf_link")] for r in rows]
+    return cells
+
+
 # ---------- scopes and credential loading ----------
 
 
@@ -438,22 +446,41 @@ def test_values_have_header_rows_in_order_and_numbers_stay_numbers(
     assert ready_values[0] == COLUMNS == review_values[0]
     assert [r[0] for r in ready_values[1:]] == ["z.pdf", "a.pdf"]
     assert [r[0] for r in review_values[1:]] == ["m.pdf"]
-    first = dict(zip(COLUMNS, ready_values[1], strict=True))
+    first = dict(zip(COLUMNS[:-1], ready_values[1], strict=True))
     assert first["net_total"] == 250.0 and isinstance(first["net_total"], float)
     assert first["gross_total"] == 302.5
     assert first["line_count"] == 2 and isinstance(first["line_count"], int)
-    second = dict(zip(COLUMNS, ready_values[2], strict=True))
+    second = dict(zip(COLUMNS[:-1], ready_values[2], strict=True))
     assert second["net_total"] == -10.0 and isinstance(second["net_total"], float)
     assert second["line_count"] == 0
-    assert all(len(r) == len(COLUMNS) for r in [*ready_values, *review_values])
-    only = dict(zip(COLUMNS, review_values[1], strict=True))
-    assert only["reasons"] == "lines sum 1 != net 2; missing supplier VAT id"
+    assert len(ready_values[0]) == len(COLUMNS) == len(review_values[0])
+    assert all(
+        len(r) == len(COLUMNS) - 1 for r in [*ready_values[1:], *review_values[1:]]
+    )
+    only = dict(zip(COLUMNS[:-1], review_values[1], strict=True))
+    assert only["reasons"] == "'lines sum 1 != net 2; missing supplier VAT id"
     assert (
         only["supplier_name"] == ""
         and only["net_total"] == ""
         and only["line_count"] == ""
     )
-    assert only["pdf_link"] == '=HYPERLINK("https://drive.example/m.pdf", "m.pdf")'
+    assert link_cells(services, 0) == [
+        {
+            "userEnteredValue": {"stringValue": name},
+            "userEnteredFormat": {
+                "textFormat": {"link": {"uri": f"https://drive.example/{name}"}}
+            },
+        }
+        for name in ("z.pdf", "a.pdf")
+    ]
+    assert link_cells(services, 1) == [
+        {
+            "userEnteredValue": {"stringValue": "m.pdf"},
+            "userEnteredFormat": {
+                "textFormat": {"link": {"uri": "https://drive.example/m.pdf"}}
+            },
+        }
+    ]
 
 
 def test_empty_ready_and_empty_review_each_get_only_a_header(
@@ -486,7 +513,7 @@ def test_both_lists_empty_creates_folder_and_sheet_but_uploads_nothing(
     assert data == {"'Ready'!A1": [COLUMNS], "'Needs review'!A1": [COLUMNS]}
 
 
-def test_formula_like_file_name_is_text_in_file_cell_but_raw_in_link_label(
+def test_formula_like_file_name_is_text_in_file_cell_but_raw_in_link_cell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     services = install(monkeypatch)
@@ -495,13 +522,18 @@ def test_formula_like_file_name_is_text_in_file_cell_but_raw_in_link_label(
     google_sheet.publish([], [row])
 
     values = sheet_data(services)["'Needs review'!A1"][1]
-    cells = dict(zip(COLUMNS, values, strict=True))
+    cells = dict(zip(COLUMNS[:-1], values, strict=True))
     assert cells["file"] == "'=1+1.pdf"
     assert cells["reasons"] == "'@boom"
     assert cells["supplier_name"] == "'-x"
-    assert (
-        cells["pdf_link"] == '=HYPERLINK("https://drive.example/=1+1.pdf", "=1+1.pdf")'
-    )
+    assert link_cells(services, 1) == [
+        {
+            "userEnteredValue": {"stringValue": "=1+1.pdf"},
+            "userEnteredFormat": {
+                "textFormat": {"link": {"uri": "https://drive.example/=1+1.pdf"}}
+            },
+        }
+    ]
 
 
 def test_http_error_mid_upload_propagates_and_nothing_after_it_runs(

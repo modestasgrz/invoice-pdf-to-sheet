@@ -129,24 +129,28 @@ SUSPICIOUS = re.compile(
     re.IGNORECASE,
 )
 
-CSS = """:root{--ink:#16181d;--mute:#6b7280;--line:#e5e7eb;--bg:#f7f7f5;--ok:#15803d;--rev:#b45309;--err:#b91c1c}
-*{box-sizing:border-box}body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
-main{max-width:1100px;margin:0 auto;padding:28px 24px 48px}h1{margin:0;font-size:22px}h2{font-size:16px;margin:28px 0 10px}
-.sub{color:var(--mute);margin-top:4px}.tiles{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
-.tile{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-width:170px}
-.tile b{display:block;font-size:26px}.tile span{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-.tile.ok b{color:var(--ok)}.tile.rev{border-color:var(--rev)}.tile.rev b{color:var(--rev)}
-.card{background:#fff;border:1px solid var(--line);border-left:4px solid var(--rev);border-radius:10px;padding:14px 16px;margin-bottom:10px}
-.card .top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.card .who{font-weight:600}.card .amt{font-weight:600;white-space:nowrap}
-.card ul{margin:8px 0 6px;padding-left:18px}.card li{margin:3px 0}.todo{color:var(--rev);font-weight:600}
-.meta{color:var(--mute);font-size:12px}a{color:#1d4ed8}
-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);padding:9px 12px;border-bottom:1px solid var(--line);background:#fafafa}
-td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-.pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--mute)}
-.pill.verified{color:var(--ok);border-color:#bbf7d0}.pill.vision{color:#6d28d9;border-color:#ddd6fe}
-.card.glance{border-left-color:#6d28d9}.card.glance .todo{color:#6d28d9}.flag{color:#6d28d9;font-size:12px;font-weight:600}
-.miss{color:var(--err);font-size:12px;font-weight:600}.score{margin-top:28px;color:var(--mute);font-size:13px}"""
+CSS = """:root{--bg1:#141414;--bg2:#0B1710;--card:#0e1b13;--surface:#1b241e;--line:#2a352d;--ink:#EDE6D8;--ink2:#dccfba;--mute:#8a857b;--amber:#E8A83C;--amber2:#B0791C;--red:#F08A7E}
+*{box-sizing:border-box}html{background:var(--bg1)}
+body{margin:0;min-height:100vh;font:15px/1.5 "Avenir Next",Avenir,"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:linear-gradient(160deg,var(--bg1) 0%,var(--bg2) 100%) fixed}
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:13px;color:var(--ink2)}
+main{max-width:1100px;margin:0 auto;padding:32px 24px 56px}h1{margin:0;font-size:26px;font-weight:600;letter-spacing:-.01em}h2{font-size:17px;font-weight:600;margin:32px 0 12px}
+.sub{color:var(--mute);margin-top:6px}.tiles{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;min-width:180px;flex:1 1 180px}
+.tile b{display:block;font-size:30px;font-weight:600}.tile span{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.tile.ok b{color:var(--ink)}.tile.rev{border-color:var(--amber2)}.tile.rev b{color:var(--amber)}
+.card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:12px;padding:16px 18px;margin-bottom:12px}
+.card .top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.card .who{font-weight:600}.card .amt{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.card ul{margin:10px 0 8px;padding-left:18px}.card li{margin:4px 0;color:var(--ink2)}.todo{color:var(--amber);font-weight:600}
+.card.glance{border-left-color:var(--ink2)}.card.glance .todo{color:var(--ink)}.flag{color:var(--amber);font-size:12px;font-weight:600}
+.meta{color:var(--mute);font-size:12.5px}a{color:var(--amber)}a:hover{color:var(--ink);text-decoration-color:var(--amber2)}
+.table{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;background:var(--card)}
+th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);padding:10px 12px;border-bottom:1px solid var(--line);background:var(--surface);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+.pill.verified{color:var(--ink2);border-color:#3a4a3f}.pill.vision{color:var(--amber);border-color:var(--amber2)}
+.miss{color:var(--red);font-size:12px;font-weight:600}.score{margin-top:32px;color:var(--mute);font-size:13px}
+@media (max-width:600px){main{padding:24px 14px 40px}h1{font-size:22px}.tile b{font-size:26px}th,td{padding:8px;font-size:13.5px}th:nth-child(2),td:nth-child(2),th:nth-child(3),td:nth-child(3),th:nth-child(6),td:nth-child(6){display:none}td:nth-child(4){white-space:nowrap}}"""
 
 
 def money(rows: list[dict[str, Any]]) -> str:
@@ -303,7 +307,7 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
         )
     parts += [
         f"<h2>Ready to book ({len(ready)})</h2>",
-        "<table><thead><tr><th>Supplier</th><th>Invoice</th><th>Date</th><th>Due</th><th>Total</th><th>Read by</th><th>PDF</th></tr></thead><tbody>",
+        "<div class='table'><table><thead><tr><th>Supplier</th><th>Invoice</th><th>Date</th><th>Due</th><th>Total</th><th>Read by</th><th>PDF</th></tr></thead><tbody>",
     ]
     for row in sorted(ready, key=lambda r: str(r["due_date"] or "9999")):
         link = href(row, 1)
@@ -314,7 +318,7 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
             f"<td><span class='pill {e(str(row['confidence']))}'>{'quotes checked' if row['confidence'] == 'verified' else 'scan, read from image' if row['confidence'] == 'vision' else e(str(row['confidence']))}</span></td>"
             f"<td>{f'<a href={chr(39)}{link}{chr(39)}>open</a>' if link else ''}</td></tr>"
         )
-    parts.append("</tbody></table>")
+    parts.append("</tbody></table></div>")
     if key_path:
         lines = evaluate(xlsx, key_path)
         parts.append(

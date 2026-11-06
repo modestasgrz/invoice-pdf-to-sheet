@@ -6,7 +6,7 @@ import pytest
 from google.auth.exceptions import RefreshError
 
 from invoice_pdf_to_sheet import google_sheet
-from invoice_pdf_to_sheet.schema import ResultRow
+from invoice_pdf_to_sheet.schema import COLUMNS, ResultRow
 
 
 def test_as_text_neutralizes_formula_starts() -> None:
@@ -18,7 +18,12 @@ def test_as_text_neutralizes_formula_starts() -> None:
     assert google_sheet.as_text("@x") == "'@x"
     assert google_sheet.as_text(None) == ""
     assert google_sheet.as_text(-5.0) == -5.0
-    assert google_sheet.as_text("VR-1") == "VR-1"
+    assert google_sheet.as_text("VR-1") == "'VR-1"
+    assert google_sheet.as_text("Verdant Ridge BV") == "Verdant Ridge BV"
+    assert google_sheet.as_text("#N/A") == "'#N/A"
+    assert google_sheet.as_text("Oct 1, 2026") == "'Oct 1, 2026"
+    assert google_sheet.as_text(" false ") == "' false "
+    assert google_sheet.as_text("'t Hooft BV") == "''t Hooft BV"
     assert google_sheet.as_text("-5") == "'-5"
 
 
@@ -72,7 +77,7 @@ def test_expired_token_is_refreshed_and_saved(
     assert paths[1].read_text() == '{"new": 1}'
 
 
-def test_hyperlink_escapes_quotes_and_cells_are_neutralized(
+def test_link_label_keeps_quotes_raw_and_cells_are_neutralized(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pdf = tmp_path / 'a"b.pdf'
@@ -109,8 +114,17 @@ def test_hyperlink_escapes_quotes_and_cells_are_neutralized(
     )
     review = body["data"][1]["values"]
     assert review[1][1] == "'=cmd()"
-    assert review[1][-1] == '=HYPERLINK("https://drive.example/x", "a""b.pdf")'
+    assert len(review[1]) == len(COLUMNS) - 1
+    assert "HYPERLINK" not in str(body)
     assert body["data"][0]["values"] == [review[0]]
+    create_body = sheets.spreadsheets.return_value.create.call_args.kwargs["body"]
+    cell = create_body["sheets"][1]["data"][0]["rowData"][1]["values"][-1]
+    assert cell == {
+        "userEnteredValue": {"stringValue": 'a"b.pdf'},
+        "userEnteredFormat": {
+            "textFormat": {"link": {"uri": "https://drive.example/x"}}
+        },
+    }
 
 
 def test_coercible_text_is_kept_as_typed() -> None:
@@ -166,4 +180,7 @@ def test_symlinked_pdf_is_not_uploaded(
     body = sheets.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs[
         "body"
     ]
-    assert body["data"][1]["values"][1][-1] == "(not uploaded)"
+    assert len(body["data"][1]["values"][1]) == len(COLUMNS) - 1
+    create_body = sheets.spreadsheets.return_value.create.call_args.kwargs["body"]
+    cell = create_body["sheets"][1]["data"][0]["rowData"][1]["values"][-1]
+    assert cell == {"userEnteredValue": {"stringValue": "(not uploaded)"}}
