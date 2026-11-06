@@ -418,7 +418,7 @@ def test_header_row_ends_with_pdf_link_label(
 
 @pytest.mark.parametrize(
     ("amount", "text"),
-    [(float("nan"), "nan"), (float("inf"), "inf"), (float("-inf"), "-inf")],
+    [(float("nan"), "nan"), (float("inf"), "inf"), (float("-inf"), "'-inf")],
 )
 def test_non_finite_amounts_go_as_text_and_payload_stays_valid_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, amount: float, text: str

@@ -80,7 +80,7 @@ def as_text(value: str | float | None) -> str | float | int:
         )
         return "'" + value if coercible else value
     if not math.isfinite(value):
-        return str(value)
+        return as_text(str(value))
     return value
 
 
