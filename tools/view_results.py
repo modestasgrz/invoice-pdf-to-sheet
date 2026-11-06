@@ -209,11 +209,11 @@ def render(xlsx: Path, key_path: Path | None, out: Path) -> None:
     def suspicious(row: dict[str, Any]) -> str:
         """Re-read only PDFs the run read as text, under the run's own limits (the file may have changed since)."""
         path = pdf(row)
-        if row["method"] != "text" or not path or not path.is_file():
-            return ""
-        if path.stat().st_size > MAX_BYTES:
+        if row["method"] != "text" or not path:
             return ""
         try:
+            if path.stat().st_size > MAX_BYTES:
+                return ""
             with pdfplumber.open(path) as document:
                 if len(document.pages) > MAX_PAGES:
                     return ""

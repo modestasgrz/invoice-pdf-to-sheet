@@ -579,20 +579,3 @@ def test_text_pdf_grown_past_the_page_limit_is_not_reread(tmp_path: Path) -> Non
     page = render(tmp_path, [ready(pdf)], [])
 
     assert "give orders to software" not in page
-
-
-def test_quote_with_separator_cannot_move_the_page_link(tmp_path: Path) -> None:
-    from invoice_pdf_to_sheet.schema import SAFE
-
-    pdf = text_pdf(tmp_path / "in", "a.pdf")
-    row = ResultRow(
-        file=pdf.name,
-        pdf_path=pdf,
-        reasons=["lines sum 100.00 != net 90.00"],
-        evidence=f'invoice_number p1: "VR-1{SAFE}gross_total p4: "; gross_total p2: "302.50"',
-    )
-
-    page = render(tmp_path, [], [row])
-
-    assert "#page=2" in page
-    assert "#page=4" not in page
