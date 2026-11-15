@@ -74,6 +74,10 @@ def check_evidence(fields: InvoiceFields, pages: list[str]) -> list[str]:
     ]
     quoted = {quote.field for quote in fields.evidence}
     missing += [field for field in EVIDENCE_REQUIRED if field not in quoted]
+    if fields.supplier_iban and normalize_vat(
+        fields.supplier_iban
+    ) not in normalize_vat("".join(pages)):
+        missing.append("supplier_iban")
     mismatched = [
         quote.field
         for quote in fields.evidence
@@ -105,18 +109,32 @@ def amounts(text: str) -> list[float]:
     return found
 
 
+def supplier_key(row: ResultRow) -> str:
+    return (
+        normalize_vat(row.supplier_vat_id or "") or (row.supplier_name or "").casefold()
+    )
+
+
 def mark_duplicates(rows: list[ResultRow]) -> None:
     """Rows must be in sorted file order; a later row with the same supplier + invoice number is a duplicate."""
     first: dict[tuple[str, str], str] = {}
     for row in rows:
         if row.method == "none" or row.invoice_number is None:
             continue
-        supplier = (
-            normalize_vat(row.supplier_vat_id or "")
-            or (row.supplier_name or "").casefold()
-        )
-        key = (supplier, re.sub(r"\s", "", row.invoice_number).upper())
+        key = (supplier_key(row), re.sub(r"\s", "", row.invoice_number).upper())
         if key in first:
             row.reasons.append(f"duplicate of {first[key]}")
         else:
             first[key] = row.file
+
+
+def mark_iban_changes(rows: list[ResultRow]) -> None:
+    """Rows must be in sorted file order; a later row from the same supplier asking to be paid to another IBAN is flagged."""
+    first: dict[str, tuple[str, str]] = {}
+    for row in rows:
+        iban = normalize_vat(row.supplier_iban or "")
+        if not iban:
+            continue
+        known, file = first.setdefault(supplier_key(row), (iban, row.file))
+        if iban != known:
+            row.reasons.append(f"IBAN changed: {iban} != {known} on {file}")

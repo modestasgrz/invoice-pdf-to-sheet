@@ -306,13 +306,19 @@ def test_planted_labels_are_unique_and_tabs_follow_them() -> None:
     planted = sorted(e["planted"] for e in KEY.values() if e["planted"])
     assert planted == [
         "duplicate",
+        "iban_changed",
         "injection_note",
         "missing_vat",
         "scan",
         "sum_mismatch",
     ]
     for entry in KEY.values():
-        review = entry["planted"] in ("duplicate", "sum_mismatch", "missing_vat")
+        review = entry["planted"] in (
+            "duplicate",
+            "sum_mismatch",
+            "missing_vat",
+            "iban_changed",
+        )
         assert entry["expected_tab"] == ("Needs review" if review else "Ready")
 
 
@@ -320,6 +326,7 @@ def test_key_entries_have_exactly_the_dec10_fields() -> None:
     fields = {
         "supplier_name",
         "supplier_vat_id",
+        "supplier_iban",
         "invoice_number",
         "invoice_date",
         "due_date",
@@ -336,3 +343,26 @@ def test_key_entries_have_exactly_the_dec10_fields() -> None:
     for name, entry in KEY.items():
         assert set(entry) == fields, name
         assert name.endswith(".pdf")
+
+
+@pytest.mark.parametrize("name", TEXT_FILES)
+def test_key_iban_is_printed_in_the_pdf(name: str) -> None:
+    assert KEY[name]["supplier_iban"] in text_of(name)
+
+
+def test_each_supplier_has_one_iban_except_the_planted_change() -> None:
+    by_supplier: dict[str, set[str]] = {}
+    for entry in KEY.values():
+        if entry["planted"] != "iban_changed":
+            by_supplier.setdefault(entry["supplier_name"], set()).add(
+                entry["supplier_iban"]
+            )
+    assert all(len(ibans) == 1 for ibans in by_supplier.values())
+    [changed] = [n for n, e in KEY.items() if e["planted"] == "iban_changed"]
+    entry = KEY[changed]
+    assert entry["supplier_iban"] not in by_supplier[entry["supplier_name"]]
+    assert changed == max(
+        n for n, e in KEY.items() if e["supplier_name"] == entry["supplier_name"]
+    )
+    assert entry["expected_tab"] == "Needs review"
+    assert all(e["supplier_iban"][2:4] == "00" for e in KEY.values())

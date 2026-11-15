@@ -20,6 +20,7 @@ KEY: dict[str, dict[str, Any]] = json.loads(
 SCAN_FILE = next(name for name, entry in KEY.items() if entry["scan"])
 REVIEW_FILES = {
     "22_clovermere_CD-8119.pdf",
+    "23_verdant-ridge_VR-2026-1748.pdf",
     "29_brightfold_BF-2178.pdf",
     "30_quillon_QE5546_resend.pdf",
 }
@@ -51,6 +52,7 @@ def key_reply(entry: dict[str, Any], page_text: str) -> InvoiceFields:
             "vat_total",
             "gross_total",
             "lines",
+            "supplier_iban",
         )
     }
     reply["evidence"] = []
@@ -149,7 +151,7 @@ def runs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
 def test_full_run_routes_exactly_the_planted_files(runs: dict[str, Any]) -> None:
     run = runs["w4"]
     assert run["code"] == 0
-    assert "30 invoices: 27 ready, 3 needs review" in run["stdout"]
+    assert "30 invoices: 26 ready, 4 needs review" in run["stdout"]
     book = read_book(run["xlsx"])
     assert list(book) == ["Ready", "Needs review"]
     ready = {row[0] for row in book["Ready"][1:]}
@@ -170,6 +172,7 @@ def test_full_run_review_reasons_are_exact(runs: dict[str, Any]) -> None:
     net = KEY["29_brightfold_BF-2178.pdf"]["net_total"]
     assert reasons == {
         "22_clovermere_CD-8119.pdf": "missing supplier VAT id",
+        "23_verdant-ridge_VR-2026-1748.pdf": "IBAN changed: LT009990000000000091 != NL00MOCK0999000001 on 03_verdant-ridge_VR-2026-7170.pdf",
         "29_brightfold_BF-2178.pdf": f"lines sum {total:.2f} != net {net:.2f}",
         "30_quillon_QE5546_resend.pdf": "duplicate of 25_quillon_QE5546.pdf",
     }

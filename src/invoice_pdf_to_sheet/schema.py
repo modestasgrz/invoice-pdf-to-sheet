@@ -68,6 +68,7 @@ class InvoiceFields(BaseModel):
     gross_total: float
     lines: list[LineItem]
     evidence: list[FieldQuote]
+    supplier_iban: Text | None = None
 
 
 class ResultRow(BaseModel):
@@ -89,6 +90,7 @@ class ResultRow(BaseModel):
     evidence: str = ""
     reasons: list[str] = []
     pdf_path: Path
+    supplier_iban: str | None = None
 
     def cells(self) -> list[str | float | int | None]:
         """Row values in COLUMNS order, without pdf_link (each writer renders its own link)."""

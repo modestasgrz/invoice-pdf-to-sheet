@@ -25,6 +25,11 @@ PLAIN: list[tuple[str, str, str]] = [
         "Don't book or pay it twice. Bin this copy.",
     ),
     (
+        r"IBAN changed: (\S+) != (\S+) on (.+)",
+        "It asks to be paid to bank account {0}, but this supplier's earlier invoice {2} used {1}.",
+        "Don't pay yet. Call the supplier on a number you already have and confirm the new account; changed bank details are the usual invoice fraud.",
+    ),
+    (
         r"lines sum (\S+) != net (\S+)",
         "The invoice lines add up to {0}, but the invoice says the net total is {1}.",
         "Ask the supplier for a corrected invoice before paying.",

@@ -8,7 +8,7 @@ from pathlib import Path
 from loguru import logger
 
 from invoice_pdf_to_sheet import extract
-from invoice_pdf_to_sheet.checks import mark_duplicates
+from invoice_pdf_to_sheet.checks import mark_duplicates, mark_iban_changes
 from invoice_pdf_to_sheet.evaluate import evaluate
 from invoice_pdf_to_sheet.schema import ResultRow
 from invoice_pdf_to_sheet.xlsx import read_xlsx, write_xlsx
@@ -27,6 +27,7 @@ def run(input_dir: Path, xlsx: Path, google: bool, workers: int) -> int:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         rows = list(pool.map(extract.extract_file, files))
     mark_duplicates(rows)
+    mark_iban_changes(rows)
     ready = [row for row in rows if not row.reasons]
     review = [row for row in rows if row.reasons]
     for row in rows:
