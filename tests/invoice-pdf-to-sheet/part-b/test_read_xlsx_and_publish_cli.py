@@ -15,7 +15,7 @@ def row(pdf_dir: Path, name: str, **fields: Any) -> ResultRow:
 
 
 def as_data(item: ResultRow) -> dict[str, Any]:
-    return item.model_dump(exclude={"pdf_path"})
+    return item.model_dump(exclude={"pdf_path", "supplier_iban"})
 
 
 def roundtrip(

@@ -2,6 +2,7 @@
   "01_tamberlane_TES-5287.pdf": {
     "supplier_name": "Tamberlane Espresso Service Ltd",
     "supplier_vat_id": "IE9990004W",
+    "supplier_iban": "IE00 MOCK 9990 0000 0000 04",
     "invoice_number": "TES-5287",
     "invoice_date": "2026-08-03",
     "due_date": "2026-09-02",
@@ -43,6 +44,7 @@
   "02_brightfold_BF-5926.pdf": {
     "supplier_name": "Brightfold Verpackung GmbH",
     "supplier_vat_id": "DE999000002",
+    "supplier_iban": "DE00 9990 0000 0000 0000 02",
     "invoice_number": "BF-5926",
     "invoice_date": "2026-08-12",
     "due_date": "2026-08-26",
@@ -72,6 +74,7 @@
   "03_verdant-ridge_VR-2026-7170.pdf": {
     "supplier_name": "Verdant Ridge Green Coffee Imports BV",
     "supplier_vat_id": "NL999000001B01",
+    "supplier_iban": "NL00 MOCK 0999 0000 01",
     "invoice_number": "VR-2026-7170",
     "invoice_date": "2026-08-13",
     "due_date": "2026-09-12",
@@ -113,6 +116,7 @@
   "04_clovermere_CD-7003.pdf": {
     "supplier_name": "Clovermere Dairy Co-op",
     "supplier_vat_id": "LT999000003",
+    "supplier_iban": "LT00 9990 0000 0000 0003",
     "invoice_number": "CD/7003",
     "invoice_date": "2026-08-14",
     "due_date": "2026-08-24",
@@ -142,6 +146,7 @@
   "05_verdant-ridge_VR-2026-1142.pdf": {
     "supplier_name": "Verdant Ridge Green Coffee Imports BV",
     "supplier_vat_id": "NL999000001B01",
+    "supplier_iban": "NL00 MOCK 0999 0000 01",
     "invoice_number": "VR-2026-1142",
     "invoice_date": "2026-08-17",
     "due_date": "2026-09-16",
@@ -183,6 +188,7 @@
   "06_tamberlane_TES-5512.pdf": {
     "supplier_name": "Tamberlane Espresso Service Ltd",
     "supplier_vat_id": "IE9990004W",
+    "supplier_iban": "IE00 MOCK 9990 0000 0000 04",
     "invoice_number": "TES-5512",
     "invoice_date": "2026-08-22",
     "due_date": "2026-09-21",
@@ -224,6 +230,7 @@
   "07_clovermere_CD-2822.pdf": {
     "supplier_name": "Clovermere Dairy Co-op",
     "supplier_vat_id": "LT999000003",
+    "supplier_iban": "LT00 9990 0000 0000 0003",
     "invoice_number": "CD/2822",
     "invoice_date": "2026-08-24",
     "due_date": "2026-09-03",
@@ -253,6 +260,7 @@
   "08_swiftpaw_SP-8391.pdf": {
     "supplier_name": "Swiftpaw Couriers SIA",
     "supplier_vat_id": "LV99900000006",
+    "supplier_iban": "LV00 MOCK 9990 0000 0000 6",
     "invoice_number": "SP-8391",
     "invoice_date": "2026-08-26",
     "due_date": null,
@@ -294,6 +302,7 @@
   "09_tamberlane_TES-4736.pdf": {
     "supplier_name": "Tamberlane Espresso Service Ltd",
     "supplier_vat_id": "IE9990004W",
+    "supplier_iban": "IE00 MOCK 9990 0000 0000 04",
     "invoice_number": "TES-4736",
     "invoice_date": "2026-09-03",
     "due_date": "2026-10-03",
@@ -323,6 +332,7 @@
   "10_verdant-ridge_VR-2026-6262.pdf": {
     "supplier_name": "Verdant Ridge Green Coffee Imports BV",
     "supplier_vat_id": "NL999000001B01",
+    "supplier_iban": "NL00 MOCK 0999 0000 01",
     "invoice_number": "VR-2026-6262",
     "invoice_date": "2026-09-09",
     "due_date": "2026-10-09",
@@ -352,6 +362,7 @@
   "11_tamberlane_TES-4730.pdf": {
     "supplier_name": "Tamberlane Espresso Service Ltd",
     "supplier_vat_id": "IE9990004W",
+    "supplier_iban": "IE00 MOCK 9990 0000 0000 04",
     "invoice_number": "TES-4730",
     "invoice_date": "2026-09-12",
     "due_date": "2026-10-12",
@@ -393,6 +404,7 @@
   "12_tamberlane_TES-4389.pdf": {
     "supplier_name": "Tamberlane Espresso Service Ltd",
     "supplier_vat_id": "IE9990004W",
+    "supplier_iban": "IE00 MOCK 9990 0000 0000 04",
     "invoice_number": "TES-4389",
     "invoice_date": "2026-09-14",
     "due_date": "2026-10-14",
@@ -428,6 +440,7 @@
   "13_verdant-ridge_VR-2026-7383.pdf": {
     "supplier_name": "Verdant Ridge Green Coffee Imports BV",
     "supplier_vat_id": "NL999000001B01",
+    "supplier_iban": "NL00 MOCK 0999 0000 01",
     "invoice_number": "VR-2026-7383",
     "invoice_date": "2026-09-17",
     "due_date": "2026-10-17",
@@ -457,6 +470,7 @@
   "14_swiftpaw_SP-8534.pdf": {
     "supplier_name": "Swiftpaw Couriers SIA",
     "supplier_vat_id": "LV99900000006",
+    "supplier_iban": "LV00 MOCK 9990 0000 0000 6",
     "invoice_number": "SP-8534",
     "invoice_date": "2026-09-19",
     "due_date": null,
@@ -486,6 +500,7 @@
   "15_quillon_QE2405.pdf": {
     "supplier_name": "Quillon Energy UAB",
     "supplier_vat_id": "LT999000005",
+    "supplier_iban": "LT00 9990 0000 0000 0005",
     "invoice_number": "QE2405",
     "invoice_date": "2026-09-22",
     "due_date": "2026-10-12",
@@ -521,6 +536,7 @@
   "16_swiftpaw_SP-4938.pdf": {
     "supplier_name": "Swiftpaw Couriers SIA",
     "supplier_vat_id": "LV99900000006",
+    "supplier_iban": "LV00 MOCK 9990 0000 0000 6",
     "invoice_number": "SP-4938",
     "invoice_date": "2026-09-23",
     "due_date": null,
@@ -550,6 +566,7 @@
   "17_quillon_QE7095.pdf": {
     "supplier_name": "Quillon Energy UAB",
     "supplier_vat_id": "LT999000005",
+    "supplier_iban": "LT00 9990 0000 0000 0005",
     "invoice_number": "QE7095",
     "invoice_date": "2026-09-24",
     "due_date": "2026-10-14",
@@ -585,6 +602,7 @@
   "18_swiftpaw_SP-4498.pdf": {
     "supplier_name": "Swiftpaw Couriers SIA",
     "supplier_vat_id": "LV99900000006",
+    "supplier_iban": "LV00 MOCK 9990 0000 0000 6",
     "invoice_number": "SP-4498",
     "invoice_date": "2026-09-27",
     "due_date": null,
@@ -620,6 +638,7 @@
   "19_clovermere_CD-9783.pdf": {
     "supplier_name": "Clovermere Dairy Co-op",
     "supplier_vat_id": "LT999000003",
+    "supplier_iban": "LT00 9990 0000 0000 0003",
     "invoice_number": "CD/9783",
     "invoice_date": "2026-09-28",
     "due_date": "2026-10-08",
@@ -661,6 +680,7 @@
   "20_brightfold_BF-1802.pdf": {
     "supplier_name": "Brightfold Verpackung GmbH",
     "supplier_vat_id": "DE999000002",
+    "supplier_iban": "DE00 9990 0000 0000 0000 02",
     "invoice_number": "BF-1802",
     "invoice_date": "2026-10-10",
     "due_date": "2026-10-24",
@@ -690,6 +710,7 @@
   "21_clovermere_CD-5954.pdf": {
     "supplier_name": "Clovermere Dairy Co-op",
     "supplier_vat_id": "LT999000003",
+    "supplier_iban": "LT00 9990 0000 0000 0003",
     "invoice_number": "CD/5954",
     "invoice_date": "2026-10-12",
     "due_date": "2026-10-22",
@@ -719,6 +740,7 @@
   "22_clovermere_CD-8119.pdf": {
     "supplier_name": "Clovermere Dairy Co-op",
     "supplier_vat_id": null,
+    "supplier_iban": "LT00 9990 0000 0000 0003",
     "invoice_number": "CD/8119",
     "invoice_date": "2026-10-12",
     "due_date": "2026-10-22",
@@ -748,6 +770,7 @@
   "23_verdant-ridge_VR-2026-1748.pdf": {
     "supplier_name": "Verdant Ridge Green Coffee Imports BV",
     "supplier_vat_id": "NL999000001B01",
+    "supplier_iban": "LT00 9990 0000 0000 0091",
     "invoice_number": "VR-2026-1748",
     "invoice_date": "2026-10-12",
     "due_date": "2026-11-11",
@@ -777,12 +800,13 @@
       }
     ],
     "scan": false,
-    "expected_tab": "Ready",
-    "planted": null
+    "expected_tab": "Needs review",
+    "planted": "iban_changed"
   },
   "24_brightfold_BF-5952.pdf": {
     "supplier_name": "Brightfold Verpackung GmbH",
     "supplier_vat_id": "DE999000002",
+    "supplier_iban": "DE00 9990 0000 0000 0000 02",
     "invoice_number": "BF-5952",
     "invoice_date": "2026-10-13",
     "due_date": "2026-10-27",
@@ -812,6 +836,7 @@
   "25_quillon_QE5546.pdf": {
     "supplier_name": "Quillon Energy UAB",
     "supplier_vat_id": "LT999000005",
+    "supplier_iban": "LT00 9990 0000 0000 0005",
     "invoice_number": "QE5546",
     "invoice_date": "2026-10-15",
     "due_date": "2026-11-04",
@@ -847,6 +872,7 @@
   "26_quillon_QE3552.pdf": {
     "supplier_name": "Quillon Energy UAB",
     "supplier_vat_id": "LT999000005",
+    "supplier_iban": "LT00 9990 0000 0000 0005",
     "invoice_number": "QE3552",
     "invoice_date": "2026-10-18",
     "due_date": "2026-11-07",
@@ -882,6 +908,7 @@
   "27_brightfold_BF-5910.pdf": {
     "supplier_name": "Brightfold Verpackung GmbH",
     "supplier_vat_id": "DE999000002",
+    "supplier_iban": "DE00 9990 0000 0000 0000 02",
     "invoice_number": "BF-5910",
     "invoice_date": "2026-10-22",
     "due_date": "2026-11-05",
@@ -917,6 +944,7 @@
   "28_swiftpaw_SP-6234.pdf": {
     "supplier_name": "Swiftpaw Couriers SIA",
     "supplier_vat_id": "LV99900000006",
+    "supplier_iban": "LV00 MOCK 9990 0000 0000 6",
     "invoice_number": "SP-6234",
     "invoice_date": "2026-10-23",
     "due_date": null,
@@ -958,6 +986,7 @@
   "29_brightfold_BF-2178.pdf": {
     "supplier_name": "Brightfold Verpackung GmbH",
     "supplier_vat_id": "DE999000002",
+    "supplier_iban": "DE00 9990 0000 0000 0000 02",
     "invoice_number": "BF-2178",
     "invoice_date": "2026-10-25",
     "due_date": "2026-11-08",
@@ -987,6 +1016,7 @@
   "30_quillon_QE5546_resend.pdf": {
     "supplier_name": "Quillon Energy UAB",
     "supplier_vat_id": "LT999000005",
+    "supplier_iban": "LT00 9990 0000 0000 0005",
     "invoice_number": "QE5546",
     "invoice_date": "2026-10-15",
     "due_date": "2026-11-04",

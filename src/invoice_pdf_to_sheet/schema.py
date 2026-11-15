@@ -55,7 +55,12 @@ class FieldQuote(BaseModel):
 
 
 class InvoiceFields(BaseModel):
-    model_config = ConfigDict(allow_inf_nan=False)
+    # serialization-mode schema lists defaulted fields as required, so the model must always send supplier_iban
+    model_config = ConfigDict(
+        allow_inf_nan=False,
+        json_schema_mode_override="serialization",
+        json_schema_serialization_defaults_required=True,
+    )
 
     supplier_name: Text
     supplier_vat_id: Text | None
@@ -68,6 +73,7 @@ class InvoiceFields(BaseModel):
     gross_total: float
     lines: list[LineItem]
     evidence: list[FieldQuote]
+    supplier_iban: Text | None = None
 
 
 class ResultRow(BaseModel):
@@ -89,6 +95,7 @@ class ResultRow(BaseModel):
     evidence: str = ""
     reasons: list[str] = []
     pdf_path: Path
+    supplier_iban: str | None = None
 
     def cells(self) -> list[str | float | int | None]:
         """Row values in COLUMNS order, without pdf_link (each writer renders its own link)."""

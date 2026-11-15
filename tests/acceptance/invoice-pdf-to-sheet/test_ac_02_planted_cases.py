@@ -1,7 +1,9 @@
 """AC-02: exactly 1 image-only PDF (key "scan": true), 1 duplicate pair (same VAT id + invoice number), 1 sum mismatch,
-1 missing VAT id; expected_tab is Ready for 27 entries and Needs review for 3 (second duplicate, sum mismatch, missing VAT)."""
+1 missing VAT id, 1 IBAN that differs from the supplier's first entry (and is printed in its PDF); expected_tab is Ready for
+26 entries and Needs review for 4 (second duplicate, sum mismatch, missing VAT, changed IBAN)."""
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -43,7 +45,22 @@ def test_ac_02_planted_cases() -> None:
     missing_vat = [n for n, e in key.items() if e["supplier_vat_id"] is None]
     assert len(missing_vat) == 1
 
+    def norm(raw: str) -> str:
+        return re.sub(r"[\s.\-]", "", raw).upper()
+
+    first_iban: dict[str, str] = {}
+    changed = []
+    for name in sorted(key):
+        entry = key[name]
+        iban = norm(entry["supplier_iban"])
+        if first_iban.setdefault(entry["supplier_name"], iban) != iban:
+            changed.append(name)
+    assert len(changed) == 1
+    with pdfplumber.open(REPO / "data" / "invoices" / changed[0]) as pdf:
+        printed = norm("".join(page.extract_text() or "" for page in pdf.pages))
+    assert norm(key[changed[0]]["supplier_iban"]) in printed
+
     review = sorted(n for n, e in key.items() if e["expected_tab"] == "Needs review")
     ready = [n for n, e in key.items() if e["expected_tab"] == "Ready"]
-    assert len(ready) == 27
-    assert review == sorted([dup_files[1], mismatched[0], missing_vat[0]])
+    assert len(ready) == 26
+    assert review == sorted([dup_files[1], mismatched[0], missing_vat[0], changed[0]])

@@ -26,6 +26,7 @@ def test_build_invoices_plants_each_case_once() -> None:
     planted = sorted(inv.planted for inv in invoices if inv.planted)
     assert planted == [
         "duplicate",
+        "iban_changed",
         "injection_note",
         "missing_vat",
         "scan",

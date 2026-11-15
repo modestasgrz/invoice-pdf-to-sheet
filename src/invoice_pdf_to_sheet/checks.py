@@ -1,5 +1,6 @@
 import os
 import re
+from collections import Counter
 from datetime import date
 
 from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
@@ -14,6 +15,10 @@ TOLERANCE = 0.01 + 1e-9
 
 def normalize_vat(raw: str) -> str:
     return re.sub(r"[\s.\-]", "", raw).upper()
+
+
+def normalize_iban(raw: str) -> str:
+    return normalize_vat(raw).removeprefix("IBAN").lstrip(":")
 
 
 def collapse(text: str) -> str:
@@ -74,6 +79,10 @@ def check_evidence(fields: InvoiceFields, pages: list[str]) -> list[str]:
     ]
     quoted = {quote.field for quote in fields.evidence}
     missing += [field for field in EVIDENCE_REQUIRED if field not in quoted]
+    if fields.supplier_iban and normalize_iban(
+        fields.supplier_iban
+    ) not in normalize_vat("".join(pages)):
+        missing.append("supplier_iban")
     mismatched = [
         quote.field
         for quote in fields.evidence
@@ -105,18 +114,39 @@ def amounts(text: str) -> list[float]:
     return found
 
 
+def supplier_key(row: ResultRow) -> str:
+    return (
+        normalize_vat(row.supplier_vat_id or "") or (row.supplier_name or "").casefold()
+    )
+
+
 def mark_duplicates(rows: list[ResultRow]) -> None:
     """Rows must be in sorted file order; a later row with the same supplier + invoice number is a duplicate."""
     first: dict[tuple[str, str], str] = {}
     for row in rows:
         if row.method == "none" or row.invoice_number is None:
             continue
-        supplier = (
-            normalize_vat(row.supplier_vat_id or "")
-            or (row.supplier_name or "").casefold()
-        )
-        key = (supplier, re.sub(r"\s", "", row.invoice_number).upper())
+        key = (supplier_key(row), re.sub(r"\s", "", row.invoice_number).upper())
         if key in first:
             row.reasons.append(f"duplicate of {first[key]}")
         else:
             first[key] = row.file
+
+
+def mark_iban_changes(rows: list[ResultRow]) -> None:
+    """Rows must be in sorted file order. Per supplier, the IBAN on strictly the most rows is the usual one and every row
+    asking to be paid elsewhere is flagged; with no clear usual IBAN every row is. IBANs not printed in the PDF text are
+    already in review and left out of the vote."""
+    by_supplier: dict[str, list[tuple[str, ResultRow]]] = {}
+    for row in rows:
+        iban = normalize_iban(row.supplier_iban or "")
+        if iban and "evidence not found: supplier_iban" not in row.reasons:
+            by_supplier.setdefault(supplier_key(row), []).append((iban, row))
+    for group in by_supplier.values():
+        counts = Counter(iban for iban, _ in group).most_common()
+        usual = counts[0][0] if len(counts) == 1 or counts[0][1] > counts[1][1] else ""
+        for iban, row in group:
+            if iban != usual:
+                other = usual or next(i for i, _ in counts if i != iban)
+                file = next(r.file for i, r in group if i == other)
+                row.reasons.append(f"IBAN changed: {iban} != {other} on {file}")

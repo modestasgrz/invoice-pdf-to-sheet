@@ -8,6 +8,7 @@ from invoice_pdf_to_sheet.checks import (
     check_evidence,
     check_fields,
     mark_duplicates,
+    mark_iban_changes,
     normalize_vat,
 )
 from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
@@ -170,3 +171,63 @@ def test_evidence_must_match_value() -> None:
         "evidence does not match: invoice_number",
         "evidence does not match: gross_total",
     ]
+
+
+def test_iban_change_flags_rows_off_the_usual_iban_per_supplier() -> None:
+    rows = [
+        row(
+            "a.pdf",
+            supplier_name="Clovermere",
+            supplier_iban="LT00 9990 0000 0000 0091",
+        ),
+        row("b.pdf", supplier_name="Other", supplier_iban="LT00 9990 0000 0000 0091"),
+        row("c.pdf", supplier_name="clovermere", supplier_iban=None),
+        row(
+            "d.pdf",
+            supplier_name="CLOVERMERE",
+            supplier_iban="IBAN: lt00-9990-0000-0000-0003",
+        ),
+        row("e.pdf", supplier_name="Clovermere", supplier_iban="LT00999000000000 0003"),
+    ]
+    mark_iban_changes(rows)
+    assert [r.reasons for r in rows] == [
+        ["IBAN changed: LT009990000000000091 != LT009990000000000003 on d.pdf"],
+        [],
+        [],
+        [],
+        [],
+    ]
+
+
+def test_iban_tie_flags_every_row_and_unprinted_ibans_do_not_vote() -> None:
+    rows = [
+        row("a.pdf", supplier_vat_id="DE999000002", supplier_iban="DE01"),
+        row("b.pdf", supplier_vat_id="DE999000002", supplier_iban="DE02"),
+        row("c.pdf", supplier_vat_id="DE999000002", supplier_iban="DE03"),
+        row(
+            "d.pdf",
+            supplier_vat_id="DE999000002",
+            supplier_iban="DE02",
+            reasons=["evidence not found: supplier_iban"],
+        ),
+    ]
+    mark_iban_changes(rows)
+    assert [r.reasons for r in rows] == [
+        ["IBAN changed: DE01 != DE02 on b.pdf"],
+        ["IBAN changed: DE02 != DE01 on a.pdf"],
+        ["IBAN changed: DE03 != DE01 on a.pdf"],
+        ["evidence not found: supplier_iban"],
+    ]
+
+
+def test_iban_must_be_printed_on_some_page() -> None:
+    evidence = [
+        {"field": "invoice_number", "page": 1, "quote": "BF-1"},
+        {"field": "invoice_date", "page": 1, "quote": "01.10.2026"},
+        {"field": "gross_total", "page": 1, "quote": "119,00"},
+    ]
+    pages = ["Rechnungsnummer: BF-1 01.10.2026 Gesamt 119,00", "IBAN DE00 9990\n0000"]
+    printed = fields(evidence=evidence, supplier_iban="de00999000 00")
+    assert check_evidence(printed, pages) == []
+    other = fields(evidence=evidence, supplier_iban="DE00 9990 0000 0001")
+    assert check_evidence(other, pages) == ["evidence not found: supplier_iban"]

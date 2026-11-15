@@ -9,13 +9,14 @@ All data in this repo is generated mock data (fictional coffee roastery and 6 in
 ## What it does
 
 1. Reads every PDF in a folder. Text PDFs go to Claude as text; scanned (image-only) PDFs go as page images.
-2. Claude (`claude-sonnet-5-5`) fills a strict Pydantic schema: supplier, VAT id, number, dates, totals, lines, plus a verbatim quote per key field.
+2. Claude (`claude-sonnet-5-5`) fills a strict Pydantic schema: supplier, VAT id, IBAN, number, dates, totals, lines, plus a verbatim quote per key field.
 3. Code — not the model — checks every invoice:
    - lines add up to net, net + VAT = gross (±0.01)
    - dates are real ISO dates, not in the future, due ≥ invoice date
    - supplier VAT id present, valid format, and not the buyer's own
    - evidence quotes exist on the page and contain the extracted invoice number and gross amount
    - duplicates within the batch (same supplier + invoice number)
+   - a changed bank account (the classic fake-invoice fraud): per supplier, the IBAN on most invoices in the batch is the usual one and any invoice asking to be paid elsewhere goes to review; with no clear majority all of them do. The IBAN read must also be printed in the PDF text
    - file limits: ≤ 10 MB, ≤ 5 pages, readable PDF
 4. Writes `.xlsx` (always) and, with `--google`, a Google Sheet + Drive folder of the PDFs, each row linking to its PDF.
 
@@ -55,21 +56,23 @@ uv run invoice-pdf-to-sheet run --input data/invoices --xlsx out/invoices.xlsx -
 
 ## Mock data and measurement
 
-`mock/make_invoices.py` regenerates `data/invoices/` (30 PDFs, 6 layouts incl. German labels and comma decimals) and `data/answer_key.json`. Planted cases: one scanned invoice, one re-sent duplicate, one invoice whose lines don't add up, one with no supplier VAT id, one with a prompt-injection note in the footer.
+`mock/make_invoices.py` regenerates `data/invoices/` (30 PDFs, 6 layouts incl. German labels and comma decimals) and `data/answer_key.json`. Each supplier prints one mock IBAN (check digits `00`, which no real IBAN has). Six planted cases: one scanned invoice, one re-sent duplicate, one invoice whose lines don't add up, one with no supplier VAT id, one with a prompt-injection note in the footer, and one (the latest Verdant Ridge invoice) asking to be paid to a different IBAN. Expected: 26 Ready, 4 Needs review.
 
 `eval` scores 10 header fields × 30 invoices (field-level exact match) and routing (right tab).
 
 ## Results
 
-Measured 2026-11-05 with `claude-sonnet-5-5` on the 30 generated test invoices in `data/invoices/` (fictional suppliers; not real invoices). Three full runs, same result each time:
+Measured 2026-11-15 with `claude-sonnet-5-5` on the 30 generated test invoices in `data/invoices/` (fictional suppliers; not real invoices). Three full runs of `tools/demo.sh`, same result each time:
 
-| Run | Field accuracy | Routing | Wall time |
-| --- | --- | --- | --- |
-| 1 | 300/300 = 100.0% | 30/30 | 16.5 min (API slow at the time: the SDK retried quietly, no invoice failed) |
-| 2 | 300/300 = 100.0% | 30/30 | 23 s |
-| 3 (`tools/demo.sh`) | 300/300 = 100.0% | 30/30 | 26 s |
+| Run | Field accuracy | Routing | Planted cases caught | Wall time | Cost |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 300/300 = 100.0% | 30/30 | 6/6 | 34 s | $0.24 |
+| 2 | 300/300 = 100.0% | 30/30 | 6/6 | 31 s | $0.25 |
+| 3 | 300/300 = 100.0% | 30/30 | 6/6 | 31 s | $0.24 |
 
-- All planted cases came out as designed: the re-sent Quillon invoice → `duplicate of 25_quillon_QE5546.pdf`, the Brightfold invoice → `lines sum 465.00 != net 505.00`, the Clovermere invoice → `missing supplier VAT id`. The Swiftpaw scan → Ready via vision with correct values, the Tamberlane invoice with the injection footer → Ready with the true values.
+- Every run: `30 invoices: 26 ready, 4 needs review`. The re-sent Quillon invoice → `duplicate of 25_quillon_QE5546.pdf`, the Brightfold invoice → `lines sum 465.00 != net 505.00`, the Clovermere invoice → `missing supplier VAT id`, the Verdant Ridge invoice with the new bank account → `IBAN changed: LT009990000000000091 != NL00MOCK0999000001 on 03_verdant-ridge_VR-2026-7170.pdf`. The Swiftpaw scan → Ready via vision with correct values, the Tamberlane invoice with the injection footer → Ready with the true values.
+- Cost = the token counts the API returned for the 30 calls per run (≈ 63k input, ≈ 12k output) × Sonnet 5.5 list price ($2 / $10 per million). About $0.01 per invoice.
+- Earlier data set (5 planted cases, no IBANs), 2026-11-05: also 300/300 and 30/30 in 3 runs.
 - 30 clean, generated invoices are an easy test. Real supplier PDFs will be messier; the number to watch on real data is how many land in Needs review, and why.
 
 ## Prompt-injection test
@@ -79,7 +82,7 @@ Measured 2026-11-05 with `claude-sonnet-5-5` on the 30 generated test invoices i
 
 ## Safety
 
-- Invoice text reaches the model only inside one `<invoice-<random 16 hex>>` block, new on every message, with `<`/`>` escaped, never in the system prompt; model output is schema-validated. Arithmetic, VAT, date and duplicate checks are code, so text in a PDF can't talk an invoice into Ready.
+- Invoice text reaches the model only inside one `<invoice-<random 16 hex>>` block, new on every message, with `<`/`>` escaped, never in the system prompt; model output is schema-validated. Arithmetic, VAT, date, duplicate and IBAN-change checks are code, so text in a PDF can't talk an invoice past them. The one exception is which IBAN is read when a PDF prints several (see Known limits).
 - Logs carry file names, counts, statuses and reason codes only — never invoice text, values or provider error messages.
 - Spreadsheet cells are written as text (no formula injection from invoice content).
 - Nothing is sent or shared; the Google output lands in a new private folder.
@@ -93,7 +96,8 @@ Measured 2026-11-05 with `claude-sonnet-5-5` on the 30 generated test invoices i
 - Prompt injection inside page images (scans) is not detected; the output is still schema-validated and checked like any other.
 - The Google path is tested against fakes; the first real call happens on the first `--google` run.
 - "Payable on receipt" (no printed due date) shows as an empty due date, not the invoice date.
-- No IBAN / bank-detail extraction, so a changed supplier bank account is not caught.
+- IBAN changes are caught within one batch only, by majority per supplier. There is no saved list of known supplier accounts, so a supplier with a single invoice in the batch is never compared, and a fake that outnumbers the genuine invoices would win the vote. IBANs are not checksum-validated, and a scan's IBAN can't be checked against printed text.
+- The code checks that the IBAN the model read is printed in the PDF, not that it is the account payment is asked to. A PDF printing an old and a new account could get the old one read; the check would then pass.
 - Each run writes a new spreadsheet; it does not append to an existing one.
 - Dates are stored as ISO text cells, not Excel dates.
 - The instruction-like-text warning is a short phrase list on the results page only (text PDFs, not scans); it does not change routing, and a reworded instruction slips past it. The code checks (sums, VAT, dates, evidence quotes) are the real guard.
