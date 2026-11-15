@@ -38,8 +38,13 @@ READY_FIELDS: dict[str, Any] = {
 REASONS = [
     (
         "IBAN changed: LT009990000000000091 != NL00MOCK0999000001 on 03_verdant.pdf",
-        "paid to bank account LT009990000000000091, but this supplier's earlier invoice 03_verdant.pdf used NL00MOCK0999000001",
+        "paid to bank account LT009990000000000091, but this supplier's invoice 03_verdant.pdf uses NL00MOCK0999000001",
         "confirm the new account",
+    ),
+    (
+        "evidence not found: supplier_iban",
+        "IBAN) that was read is not printed on the PDF",
+        "which account it asks to be paid to",
     ),
     (
         "duplicate of 03_quillon.pdf",

@@ -55,7 +55,12 @@ class FieldQuote(BaseModel):
 
 
 class InvoiceFields(BaseModel):
-    model_config = ConfigDict(allow_inf_nan=False)
+    # serialization-mode schema lists defaulted fields as required, so the model must always send supplier_iban
+    model_config = ConfigDict(
+        allow_inf_nan=False,
+        json_schema_mode_override="serialization",
+        json_schema_serialization_defaults_required=True,
+    )
 
     supplier_name: Text
     supplier_vat_id: Text | None

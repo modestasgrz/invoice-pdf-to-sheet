@@ -173,29 +173,50 @@ def test_evidence_must_match_value() -> None:
     ]
 
 
-def test_iban_change_flags_every_later_row_against_the_first_by_supplier() -> None:
+def test_iban_change_flags_rows_off_the_usual_iban_per_supplier() -> None:
     rows = [
         row(
             "a.pdf",
             supplier_name="Clovermere",
-            supplier_iban="LT00 9990 0000 0000 0003",
+            supplier_iban="LT00 9990 0000 0000 0091",
         ),
         row("b.pdf", supplier_name="Other", supplier_iban="LT00 9990 0000 0000 0091"),
         row("c.pdf", supplier_name="clovermere", supplier_iban=None),
         row(
             "d.pdf",
             supplier_name="CLOVERMERE",
-            supplier_iban="lt00-9990-0000-0000-0091",
+            supplier_iban="IBAN: lt00-9990-0000-0000-0003",
         ),
         row("e.pdf", supplier_name="Clovermere", supplier_iban="LT00999000000000 0003"),
     ]
     mark_iban_changes(rows)
     assert [r.reasons for r in rows] == [
+        ["IBAN changed: LT009990000000000091 != LT009990000000000003 on d.pdf"],
         [],
         [],
         [],
-        ["IBAN changed: LT009990000000000091 != LT009990000000000003 on a.pdf"],
         [],
+    ]
+
+
+def test_iban_tie_flags_every_row_and_unprinted_ibans_do_not_vote() -> None:
+    rows = [
+        row("a.pdf", supplier_vat_id="DE999000002", supplier_iban="DE01"),
+        row("b.pdf", supplier_vat_id="DE999000002", supplier_iban="DE02"),
+        row("c.pdf", supplier_vat_id="DE999000002", supplier_iban="DE03"),
+        row(
+            "d.pdf",
+            supplier_vat_id="DE999000002",
+            supplier_iban="DE02",
+            reasons=["evidence not found: supplier_iban"],
+        ),
+    ]
+    mark_iban_changes(rows)
+    assert [r.reasons for r in rows] == [
+        ["IBAN changed: DE01 != DE02 on b.pdf"],
+        ["IBAN changed: DE02 != DE01 on a.pdf"],
+        ["IBAN changed: DE03 != DE01 on a.pdf"],
+        ["evidence not found: supplier_iban"],
     ]
 
 

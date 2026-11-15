@@ -26,7 +26,7 @@ PLAIN: list[tuple[str, str, str]] = [
     ),
     (
         r"IBAN changed: (\S+) != (\S+) on (.+)",
-        "It asks to be paid to bank account {0}, but this supplier's earlier invoice {2} used {1}.",
+        "It asks to be paid to bank account {0}, but this supplier's invoice {2} uses {1}.",
         "Don't pay yet. Call the supplier on a number you already have and confirm the new account; changed bank details are the usual invoice fraud.",
     ),
     (
@@ -73,6 +73,11 @@ PLAIN: list[tuple[str, str, str]] = [
         r"due date before invoice date",
         "The due date is before the invoice date.",
         "Check both dates on the PDF.",
+    ),
+    (
+        r"evidence not found: supplier_iban",
+        "The bank account (IBAN) that was read is not printed on the PDF.",
+        "Don't pay yet. Check on the PDF which account it asks to be paid to.",
     ),
     (
         r"evidence not found: (.+)",

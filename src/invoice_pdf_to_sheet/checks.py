@@ -1,5 +1,6 @@
 import os
 import re
+from collections import Counter
 from datetime import date
 
 from invoice_pdf_to_sheet.schema import InvoiceFields, ResultRow
@@ -14,6 +15,10 @@ TOLERANCE = 0.01 + 1e-9
 
 def normalize_vat(raw: str) -> str:
     return re.sub(r"[\s.\-]", "", raw).upper()
+
+
+def normalize_iban(raw: str) -> str:
+    return normalize_vat(raw).removeprefix("IBAN").lstrip(":")
 
 
 def collapse(text: str) -> str:
@@ -74,7 +79,7 @@ def check_evidence(fields: InvoiceFields, pages: list[str]) -> list[str]:
     ]
     quoted = {quote.field for quote in fields.evidence}
     missing += [field for field in EVIDENCE_REQUIRED if field not in quoted]
-    if fields.supplier_iban and normalize_vat(
+    if fields.supplier_iban and normalize_iban(
         fields.supplier_iban
     ) not in normalize_vat("".join(pages)):
         missing.append("supplier_iban")
@@ -129,12 +134,19 @@ def mark_duplicates(rows: list[ResultRow]) -> None:
 
 
 def mark_iban_changes(rows: list[ResultRow]) -> None:
-    """Rows must be in sorted file order; a later row from the same supplier asking to be paid to another IBAN is flagged."""
-    first: dict[str, tuple[str, str]] = {}
+    """Rows must be in sorted file order. Per supplier, the IBAN on strictly the most rows is the usual one and every row
+    asking to be paid elsewhere is flagged; with no clear usual IBAN every row is. IBANs not printed in the PDF text are
+    already in review and left out of the vote."""
+    by_supplier: dict[str, list[tuple[str, ResultRow]]] = {}
     for row in rows:
-        iban = normalize_vat(row.supplier_iban or "")
-        if not iban:
-            continue
-        known, file = first.setdefault(supplier_key(row), (iban, row.file))
-        if iban != known:
-            row.reasons.append(f"IBAN changed: {iban} != {known} on {file}")
+        iban = normalize_iban(row.supplier_iban or "")
+        if iban and "evidence not found: supplier_iban" not in row.reasons:
+            by_supplier.setdefault(supplier_key(row), []).append((iban, row))
+    for group in by_supplier.values():
+        counts = Counter(iban for iban, _ in group).most_common()
+        usual = counts[0][0] if len(counts) == 1 or counts[0][1] > counts[1][1] else ""
+        for iban, row in group:
+            if iban != usual:
+                other = usual or next(i for i, _ in counts if i != iban)
+                file = next(r.file for i, r in group if i == other)
+                row.reasons.append(f"IBAN changed: {iban} != {other} on {file}")

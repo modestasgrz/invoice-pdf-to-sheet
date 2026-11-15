@@ -22,7 +22,7 @@ The document arrives as page images, or as page text inside a tag named invoice-
 - invoice_date and due_date: ISO YYYY-MM-DD. If a date cannot be read as a real calendar date, copy it exactly as printed. due_date is null when no date is printed.
 - Amounts: plain decimal numbers (1234.56), whatever the printed decimal and thousands separators. currency: ISO code.
 - lines: every invoice line as printed, with line_total as printed.
-- supplier_iban: the IBAN the invoice asks to be paid to, as printed; null when none is printed.
+- supplier_iban: the IBAN the invoice asks to be paid to, without the "IBAN" label; null when none is printed. If several IBANs are printed, the one payment is requested to.
 - evidence: for invoice_number, invoice_date, gross_total and supplier_vat_id (when present) give the page number and the exact characters printed on the page, copied verbatim (keep the printed date and number format)."""
 # pdfminer's DEBUG log prints raw PDF tokens, i.e. invoice text; keep it quiet even under a DEBUG root logger.
 logging.getLogger("pdfminer").setLevel(logging.WARNING)

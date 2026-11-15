@@ -16,7 +16,7 @@ All data in this repo is generated mock data (fictional coffee roastery and 6 in
    - supplier VAT id present, valid format, and not the buyer's own
    - evidence quotes exist on the page and contain the extracted invoice number and gross amount
    - duplicates within the batch (same supplier + invoice number)
-   - a changed bank account: an invoice asking to be paid to a different IBAN than that supplier's first invoice in the batch (the classic fake-invoice fraud), and the IBAN read must be printed in the PDF text
+   - a changed bank account (the classic fake-invoice fraud): per supplier, the IBAN on most invoices in the batch is the usual one and any invoice asking to be paid elsewhere goes to review; with no clear majority all of them do. The IBAN read must also be printed in the PDF text
    - file limits: ≤ 10 MB, ≤ 5 pages, readable PDF
 4. Writes `.xlsx` (always) and, with `--google`, a Google Sheet + Drive folder of the PDFs, each row linking to its PDF.
 
@@ -82,7 +82,7 @@ Previous data set (5 planted cases), measured 2026-11-05 with `claude-sonnet-5-5
 
 ## Safety
 
-- Invoice text reaches the model only inside one `<invoice-<random 16 hex>>` block, new on every message, with `<`/`>` escaped, never in the system prompt; model output is schema-validated. Arithmetic, VAT, date, duplicate and IBAN-change checks are code, so text in a PDF can't talk an invoice into Ready.
+- Invoice text reaches the model only inside one `<invoice-<random 16 hex>>` block, new on every message, with `<`/`>` escaped, never in the system prompt; model output is schema-validated. Arithmetic, VAT, date, duplicate and IBAN-change checks are code, so text in a PDF can't talk an invoice past them. The one exception is which IBAN is read when a PDF prints several (see Known limits).
 - Logs carry file names, counts, statuses and reason codes only — never invoice text, values or provider error messages.
 - Spreadsheet cells are written as text (no formula injection from invoice content).
 - Nothing is sent or shared; the Google output lands in a new private folder.
@@ -96,7 +96,8 @@ Previous data set (5 planted cases), measured 2026-11-05 with `claude-sonnet-5-5
 - Prompt injection inside page images (scans) is not detected; the output is still schema-validated and checked like any other.
 - The Google path is tested against fakes; the first real call happens on the first `--google` run.
 - "Payable on receipt" (no printed due date) shows as an empty due date, not the invoice date.
-- IBAN changes are caught within one batch only, against the supplier's first invoice in file-name order. There is no saved list of known supplier accounts, so a supplier's first invoice in a batch is trusted (if that one is the fake, the genuine later ones get flagged instead, which still shows the conflict). IBANs are not checksum-validated, and a scan's IBAN can't be checked against printed text.
+- IBAN changes are caught within one batch only, by majority per supplier. There is no saved list of known supplier accounts, so a supplier with a single invoice in the batch is never compared, and a fake that outnumbers the genuine invoices would win the vote. IBANs are not checksum-validated, and a scan's IBAN can't be checked against printed text.
+- The code checks that the IBAN the model read is printed in the PDF, not that it is the account payment is asked to. A PDF printing an old and a new account could get the old one read; the check would then pass.
 - Each run writes a new spreadsheet; it does not append to an existing one.
 - Dates are stored as ISO text cells, not Excel dates.
 - The instruction-like-text warning is a short phrase list on the results page only (text PDFs, not scans); it does not change routing, and a reworded instruction slips past it. The code checks (sums, VAT, dates, evidence quotes) are the real guard.
