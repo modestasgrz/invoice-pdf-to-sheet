@@ -1,8 +1,8 @@
 # invoice-pdf-to-sheet
 
-**Demo video (≈1 min):** click the poster to play it.
+**Demo video (≈1 min):**
 
-[![invoice-pdf-to-sheet demo video](docs/demo/invoice-pdf-to-sheet-poster.png)](docs/demo/invoice-pdf-to-sheet-demo.mp4)
+https://github.com/user-attachments/assets/f3ec4c13-b217-4169-bbb4-09080d40095a
 
 Supplier invoice PDFs → one row per invoice in a spreadsheet with a **Ready** tab and a **Needs review** tab. Every row carries its evidence; every review row says exactly why.
 
